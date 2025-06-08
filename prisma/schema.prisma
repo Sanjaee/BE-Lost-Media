@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  userId         String      @id @default(uuid())
+  googleId       String?     @unique
+  username       String      @unique
+  email          String      @unique
+  profilePic     String?
+  bio            String?
+  createdAt      DateTime    @default(now())
+  followersCount Int         @default(0)
+  followingCount Int         @default(0)
+
+  posts            Post[]
+  comments         Comment[]
+  likes            Like[]
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  
+  followers      Follow[] @relation("Following")
+  following      Follow[] @relation("Follower")
+
+  notifications      Notification[] @relation("UserNotifications")
+  actedNotifications Notification[] @relation("ActorNotifications")
+
+  @@map("users")
+}
+
+model Post {
+  postId        Int       @id @default(autoincrement())
+  userId        String
+  title         String
+  description   String
+  category      String
+  mediaUrl      String?
+  viewsCount    Int       @default(0)
+  likesCount    Int       @default(0)
+  commentsCount Int       @default(0)
+  sharesCount   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  isDeleted     Boolean   @default(false)
+  
+  author   User      @relation(fields: [userId], references: [userId])
+  comments Comment[]
+  likes    Like[]
+  sections ContentSection[]
+
+  @@map("posts")
+}
+
+model Comment {
+  commentId Int      @id @default(autoincrement())
+  postId    Int
+  userId    String
+  content   String
+  likesCount Int     @default(0)
+  createdAt DateTime @default(now())
+  isDeleted Boolean  @default(false)
+
+  post   Post   @relation(fields: [postId], references: [postId])
+  author User   @relation(fields: [userId], references: [userId])
+  likes  Like[]
+
+  @@map("comments")
+}
+
+model Like {
+  likeId    Int      @id @default(autoincrement())
+  userId    String
+  postId    Int?
+  commentId Int?
+  likeType  String
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [userId])
+  post    Post?    @relation(fields: [postId], references: [postId])
+  comment Comment? @relation(fields: [commentId], references: [commentId])
+
+  @@map("likes")
+}
+
+model Follow {
+  followId   Int      @id @default(autoincrement())
+  followerId String
+  followingId String
+  followedAt DateTime @default(now())
+  isActive   Boolean  @default(true)
+
+  follower  User @relation("Follower", fields: [followerId], references: [userId])
+  following User @relation("Following", fields: [followingId], references: [userId])
+  
+  @@unique([followerId, followingId])
+  @@map("followers")
+}
+
+model Message {
+  messageId  Int      @id @default(autoincrement())
+  senderId   String
+  receiverId String
+  content    String
+  mediaUrl   String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  isDeleted  Boolean  @default(false)
+  
+  sender   User @relation("SentMessages", fields: [senderId], references: [userId])
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [userId])
+
+  @@map("messages")
+}
+
+model Notification {
+  notifId   Int      @id @default(autoincrement())
+  userId    String
+  actorId   String
+  type      String
+  content   String?
+  actionUrl String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user  User @relation("UserNotifications", fields: [userId], references: [userId])
+  actor User @relation("ActorNotifications", fields: [actorId], references: [userId])
+
+  @@map("notifications")
+}
+
+model ContentSection {
+  sectionId   Int      @id @default(autoincrement())
+  type        String
+  content     String?
+  src         String?
+  order       Int
+  postId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  post        Post     @relation(fields: [postId], references: [postId], onDelete: Cascade)
+
+  @@map("content_sections")
+}
