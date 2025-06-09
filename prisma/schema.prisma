@@ -42,7 +42,8 @@ model Post {
   postId        Int       @id @default(autoincrement())
   userId        String
   title         String
-  description   String
+  description   String?
+  content       String? 
   category      String
   mediaUrl      String?
   viewsCount    Int       @default(0)

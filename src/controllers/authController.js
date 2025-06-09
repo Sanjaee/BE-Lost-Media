@@ -1,4 +1,4 @@
-// controller/authController.js
+// controllers/authController.js
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const jwt = require("jsonwebtoken");
@@ -47,7 +47,6 @@ const authController = {
 
       const { bio, username } = req.body;
 
-      // Check if username is already taken (if username is being updated)
       if (username && username !== req.user.username) {
         const existingUser = await prisma.user.findUnique({
           where: { username },
@@ -85,6 +84,57 @@ const authController = {
     }
   },
 
+  // Create JWT session - NEW ENDPOINT
+  createSession: async (req, res) => {
+    try {
+      const { userId, email } = req.body;
+
+      if (!userId || !email) {
+        return res.status(400).json({ error: "UserId and email required" });
+      }
+
+      // Verify user exists
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: {
+          userId: true,
+          email: true,
+          username: true,
+          profilePic: true,
+        },
+      });
+
+      if (!user || user.email !== email) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Generate JWT token
+      const token = jwt.sign(
+        {
+          userId: user.userId,
+          email: user.email,
+          username: user.username,
+        },
+        process.env.JWT_SECRET || "your-secret-key",
+        { expiresIn: "7d" }
+      );
+
+      res.json({ 
+        success: true, 
+        token, 
+        user: {
+          userId: user.userId,
+          email: user.email,
+          username: user.username,
+          profilePic: user.profilePic,
+        }
+      });
+    } catch (error) {
+      console.error("Error creating session:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
   // Generate JWT token for NextAuth integration
   generateToken: async (req, res) => {
     try {
@@ -96,6 +146,7 @@ const authController = {
         {
           userId: req.user.userId,
           email: req.user.email,
+          username: req.user.username,
         },
         process.env.JWT_SECRET || "your-secret-key",
         { expiresIn: "7d" }
@@ -108,7 +159,7 @@ const authController = {
     }
   },
 
-  // Verify JWT token - Updated to handle NextAuth integration
+  // Verify JWT token - Updated to handle both JWT and user object
   verifyToken: async (req, res) => {
     try {
       const { token } = req.body;
@@ -117,61 +168,71 @@ const authController = {
         return res.status(400).json({ error: "Token required" });
       }
 
-      // Try to parse as user object first (for NextAuth integration)
+      // Try JWT verification first
       try {
-        const userData = JSON.parse(token);
-        if (userData.userId) {
-          const user = await prisma.user.findUnique({
-            where: { userId: userData.userId },
-            select: {
-              userId: true,
-              googleId: true,
-              username: true,
-              email: true,
-              profilePic: true,
-              bio: true,
-              createdAt: true,
-              followersCount: true,
-              followingCount: true,
-              posts: true,
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "your-secret-key"
+        );
+
+        const user = await prisma.user.findUnique({
+          where: { userId: decoded.userId },
+          select: {
+            userId: true,
+            googleId: true,
+            username: true,
+            email: true,
+            profilePic: true,
+            bio: true,
+            createdAt: true,
+            followersCount: true,
+            followingCount: true,
+            posts: {
+              orderBy: { createdAt: 'desc' },
+              take: 10,
             },
-          });
+          },
+        });
 
-          if (user) {
-            return res.json({ user, valid: true });
-          }
+        if (!user) {
+          return res.status(404).json({ error: "User not found", valid: false });
         }
-      } catch (parseError) {
-        // Not a JSON object, try JWT verification
+
+        return res.json({ user, valid: true });
+      } catch (jwtError) {
+        // If JWT verification fails, try parsing as user object (fallback)
+        try {
+          const userData = JSON.parse(token);
+          if (userData.userId) {
+            const user = await prisma.user.findUnique({
+              where: { userId: userData.userId },
+              select: {
+                userId: true,
+                googleId: true,
+                username: true,
+                email: true,
+                profilePic: true,
+                bio: true,
+                createdAt: true,
+                followersCount: true,
+                followingCount: true,
+                posts: {
+                  orderBy: { createdAt: 'desc' },
+                  take: 10,
+                },
+              },
+            });
+
+            if (user) {
+              return res.json({ user, valid: true });
+            }
+          }
+        } catch (parseError) {
+          // Both JWT and JSON parsing failed
+        }
       }
 
-      // Try JWT verification
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "your-secret-key"
-      );
-
-      const user = await prisma.user.findUnique({
-        where: { userId: decoded.userId },
-        select: {
-          userId: true,
-          googleId: true,
-          username: true,
-          email: true,
-          profilePic: true,
-          bio: true,
-          createdAt: true,
-          followersCount: true,
-          followingCount: true,
-          posts: true,
-        },
-      });
-
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      res.json({ user, valid: true });
+      res.status(401).json({ error: "Invalid token", valid: false });
     } catch (error) {
       console.error("Error verifying token:", error);
       res.status(401).json({ error: "Invalid token", valid: false });

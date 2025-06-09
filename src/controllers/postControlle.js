@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const postController = {
@@ -7,11 +7,11 @@ const postController = {
     try {
       const { page = 1, limit = 10, category, userId } = req.query;
       const skip = (page - 1) * limit;
-      
+
       const whereClause = {
         isDeleted: false,
         ...(category && { category }),
-        ...(userId && { userId })
+        ...(userId && { userId }),
       };
 
       const posts = await prisma.post.findMany({
@@ -21,30 +21,30 @@ const postController = {
             select: {
               userId: true,
               username: true,
-              profilePic: true
-            }
+              profilePic: true,
+            },
           },
           sections: {
             orderBy: {
-              order: 'asc'
-            }
+              order: "asc",
+            },
           },
           _count: {
             select: {
               comments: true,
-              likes: true
-            }
-          }
+              likes: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
+          createdAt: "desc",
         },
         skip: parseInt(skip),
-        take: parseInt(limit)
+        take: parseInt(limit),
       });
 
       const totalPosts = await prisma.post.count({
-        where: whereClause
+        where: whereClause,
       });
 
       res.status(200).json({
@@ -54,14 +54,14 @@ const postController = {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalPosts / limit),
           totalItems: totalPosts,
-          itemsPerPage: parseInt(limit)
-        }
+          itemsPerPage: parseInt(limit),
+        },
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to fetch posts',
-        error: error.message
+        message: "Failed to fetch posts",
+        error: error.message,
       });
     }
   },
@@ -74,7 +74,7 @@ const postController = {
       const post = await prisma.post.findFirst({
         where: {
           postId: parseInt(postId),
-          isDeleted: false
+          isDeleted: false,
         },
         include: {
           author: {
@@ -82,13 +82,13 @@ const postController = {
               userId: true,
               username: true,
               profilePic: true,
-              bio: true
-            }
+              bio: true,
+            },
           },
           sections: {
             orderBy: {
-              order: 'asc'
-            }
+              order: "asc",
+            },
           },
           comments: {
             include: {
@@ -96,49 +96,49 @@ const postController = {
                 select: {
                   userId: true,
                   username: true,
-                  profilePic: true
-                }
-              }
+                  profilePic: true,
+                },
+              },
             },
             orderBy: {
-              createdAt: 'desc'
-            }
+              createdAt: "desc",
+            },
           },
           likes: {
             include: {
               user: {
                 select: {
                   userId: true,
-                  username: true
-                }
-              }
-            }
-          }
-        }
+                  username: true,
+                },
+              },
+            },
+          },
+        },
       });
 
       if (!post) {
         return res.status(404).json({
           success: false,
-          message: 'Post not found'
+          message: "Post not found",
         });
       }
 
       // Increment view count
       await prisma.post.update({
         where: { postId: parseInt(postId) },
-        data: { viewsCount: { increment: 1 } }
+        data: { viewsCount: { increment: 1 } },
       });
 
       res.status(200).json({
         success: true,
-        data: post
+        data: post,
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to fetch post',
-        error: error.message
+        message: "Failed to fetch post",
+        error: error.message,
       });
     }
   },
@@ -147,18 +147,49 @@ const postController = {
   createPost: async (req, res) => {
     try {
       const { title, description, category, mediaUrl, sections } = req.body;
-      const { userId } = req.user; // From authentication middleware
+      const { userId } = req.user;
 
       // Validate required fields
       if (!title || !description || !category) {
         return res.status(400).json({
           success: false,
-          message: 'Title, description, and category are required'
+          message: "Title, description, and category are required",
         });
       }
 
+      // Generate content from sections (optional)
+      const generateContentFromSections = (sections) => {
+        if (!sections || sections.length === 0) return "";
+
+        return sections
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((section) => {
+            switch (section.type) {
+              case "text":
+                return section.content || "";
+              case "code":
+                return `\`\`\`\n${section.content || ""}\n\`\`\``;
+              case "html":
+                return section.content || "";
+              case "image":
+                return section.src ? `![Image](${section.src})` : "";
+              case "video":
+                return section.src ? `[Video](${section.src})` : "";
+              case "link":
+                return section.src ? `[Link](${section.src})` : "";
+              default:
+                return "";
+            }
+          })
+          .filter((content) => content.trim() !== "")
+          .join("\n\n");
+      };
+
       // Create post with sections in a transaction
       const result = await prisma.$transaction(async (tx) => {
+        // Generate content from sections
+        const generatedContent = generateContentFromSections(sections);
+
         // Create the post
         const newPost = await tx.post.create({
           data: {
@@ -166,8 +197,9 @@ const postController = {
             title,
             description,
             category,
-            mediaUrl
-          }
+            mediaUrl: mediaUrl || null,
+            content: generatedContent, // Use generated content
+          },
         });
 
         // Create content sections if provided
@@ -175,13 +207,13 @@ const postController = {
           const sectionsData = sections.map((section, index) => ({
             postId: newPost.postId,
             type: section.type,
-            content: section.content,
-            src: section.src,
-            order: section.order || index + 1
+            content: section.content || null,
+            src: section.src || null,
+            order: section.order || index + 1,
           }));
 
           await tx.contentSection.createMany({
-            data: sectionsData
+            data: sectionsData,
           });
         }
 
@@ -193,28 +225,29 @@ const postController = {
               select: {
                 userId: true,
                 username: true,
-                profilePic: true
-              }
+                profilePic: true,
+              },
             },
             sections: {
               orderBy: {
-                order: 'asc'
-              }
-            }
-          }
+                order: "asc",
+              },
+            },
+          },
         });
       });
 
       res.status(201).json({
         success: true,
-        message: 'Post created successfully',
-        data: result
+        message: "Post created successfully",
+        post: result,
       });
     } catch (error) {
+      console.error("Create post error:", error);
       res.status(500).json({
         success: false,
-        message: 'Failed to create post',
-        error: error.message
+        message: "Failed to create post",
+        error: error.message,
       });
     }
   },
@@ -231,14 +264,15 @@ const postController = {
         where: {
           postId: parseInt(postId),
           userId,
-          isDeleted: false
-        }
+          isDeleted: false,
+        },
       });
 
       if (!existingPost) {
         return res.status(404).json({
           success: false,
-          message: 'Post not found or you are not authorized to update this post'
+          message:
+            "Post not found or you are not authorized to update this post",
         });
       }
 
@@ -251,15 +285,15 @@ const postController = {
             ...(title && { title }),
             ...(description && { description }),
             ...(category && { category }),
-            ...(mediaUrl !== undefined && { mediaUrl })
-          }
+            ...(mediaUrl !== undefined && { mediaUrl }),
+          },
         });
 
         // Update content sections if provided
         if (sections) {
           // Delete existing sections
           await tx.contentSection.deleteMany({
-            where: { postId: parseInt(postId) }
+            where: { postId: parseInt(postId) },
           });
 
           // Create new sections
@@ -269,11 +303,11 @@ const postController = {
               type: section.type,
               content: section.content,
               src: section.src,
-              order: section.order || index + 1
+              order: section.order || index + 1,
             }));
 
             await tx.contentSection.createMany({
-              data: sectionsData
+              data: sectionsData,
             });
           }
         }
@@ -286,28 +320,28 @@ const postController = {
               select: {
                 userId: true,
                 username: true,
-                profilePic: true
-              }
+                profilePic: true,
+              },
             },
             sections: {
               orderBy: {
-                order: 'asc'
-              }
-            }
-          }
+                order: "asc",
+              },
+            },
+          },
         });
       });
 
       res.status(200).json({
         success: true,
-        message: 'Post updated successfully',
-        data: result
+        message: "Post updated successfully",
+        data: result,
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to update post',
-        error: error.message
+        message: "Failed to update post",
+        error: error.message,
       });
     }
   },
@@ -323,32 +357,33 @@ const postController = {
         where: {
           postId: parseInt(postId),
           userId,
-          isDeleted: false
-        }
+          isDeleted: false,
+        },
       });
 
       if (!existingPost) {
         return res.status(404).json({
           success: false,
-          message: 'Post not found or you are not authorized to delete this post'
+          message:
+            "Post not found or you are not authorized to delete this post",
         });
       }
 
       // Soft delete the post
       await prisma.post.update({
         where: { postId: parseInt(postId) },
-        data: { isDeleted: true }
+        data: { isDeleted: true },
       });
 
       res.status(200).json({
         success: true,
-        message: 'Post deleted successfully'
+        message: "Post deleted successfully",
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to delete post',
-        error: error.message
+        message: "Failed to delete post",
+        error: error.message,
       });
     }
   },
@@ -362,7 +397,7 @@ const postController = {
 
       const whereClause = {
         userId,
-        ...(includeDeleted === 'true' ? {} : { isDeleted: false })
+        ...(includeDeleted === "true" ? {} : { isDeleted: false }),
       };
 
       const posts = await prisma.post.findMany({
@@ -370,25 +405,25 @@ const postController = {
         include: {
           sections: {
             orderBy: {
-              order: 'asc'
-            }
+              order: "asc",
+            },
           },
           _count: {
             select: {
               comments: true,
-              likes: true
-            }
-          }
+              likes: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
+          createdAt: "desc",
         },
         skip: parseInt(skip),
-        take: parseInt(limit)
+        take: parseInt(limit),
       });
 
       const totalPosts = await prisma.post.count({
-        where: whereClause
+        where: whereClause,
       });
 
       res.status(200).json({
@@ -398,14 +433,14 @@ const postController = {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalPosts / limit),
           totalItems: totalPosts,
-          itemsPerPage: parseInt(limit)
-        }
+          itemsPerPage: parseInt(limit),
+        },
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to fetch user posts',
-        error: error.message
+        message: "Failed to fetch user posts",
+        error: error.message,
       });
     }
   },
@@ -420,14 +455,14 @@ const postController = {
       const post = await prisma.post.findFirst({
         where: {
           postId: parseInt(postId),
-          isDeleted: false
-        }
+          isDeleted: false,
+        },
       });
 
       if (!post) {
         return res.status(404).json({
           success: false,
-          message: 'Post not found'
+          message: "Post not found",
         });
       }
 
@@ -435,8 +470,8 @@ const postController = {
       const existingLike = await prisma.like.findFirst({
         where: {
           postId: parseInt(postId),
-          userId
-        }
+          userId,
+        },
       });
 
       let message;
@@ -444,44 +479,44 @@ const postController = {
         // Unlike the post
         await prisma.$transaction(async (tx) => {
           await tx.like.delete({
-            where: { likeId: existingLike.likeId }
+            where: { likeId: existingLike.likeId },
           });
           await tx.post.update({
             where: { postId: parseInt(postId) },
-            data: { likesCount: { decrement: 1 } }
+            data: { likesCount: { decrement: 1 } },
           });
         });
-        message = 'Post unliked successfully';
+        message = "Post unliked successfully";
       } else {
         // Like the post
         await prisma.$transaction(async (tx) => {
           await tx.like.create({
             data: {
               postId: parseInt(postId),
-              userId
-            }
+              userId,
+            },
           });
           await tx.post.update({
             where: { postId: parseInt(postId) },
-            data: { likesCount: { increment: 1 } }
+            data: { likesCount: { increment: 1 } },
           });
         });
-        message = 'Post liked successfully';
+        message = "Post liked successfully";
       }
 
       res.status(200).json({
         success: true,
         message,
-        isLiked: !existingLike
+        isLiked: !existingLike,
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to toggle like',
-        error: error.message
+        message: "Failed to toggle like",
+        error: error.message,
       });
     }
-  }
+  },
 };
 
 module.exports = postController;

@@ -43,7 +43,7 @@ app.use(passport.session());
 
 // Routes
 app.use("/auth", authRoutes);
-app.use("/posts", postRoutes);
+app.use("/api/posts", postRoutes);
 
 // Health check route
 app.get("/health", (req, res) => {

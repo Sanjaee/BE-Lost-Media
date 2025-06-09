@@ -1,4 +1,4 @@
-// route/authRoutes.js
+// routes/authRoutes.js
 const express = require("express");
 const passport = require("passport");
 const authController = require("../controllers/authController");
@@ -118,6 +118,9 @@ router.post("/signin-google", async (req, res) => {
       .json({ error: "Internal server error", details: error.message });
   }
 });
+
+// NEW: Create JWT session for NextAuth integration
+router.post("/create-session", authController.createSession);
 
 // ===============================
 // TRADITIONAL PASSPORT ROUTES

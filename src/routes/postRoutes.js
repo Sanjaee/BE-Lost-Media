@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const postController = require('../controllers/postControlle');
+const authMiddleware = require('../middleware/authMiddleware');
 
 // Public routes (no authentication required)
 router.get('/', postController.getAllPosts);
@@ -8,6 +9,7 @@ router.get('/:postId', postController.getPostById);
 
 // Protected routes (authentication required)
  // Apply auth middleware to all routes below
+ router.use(authMiddleware);
 
 router.post('/', postController.createPost);
 router.put('/:postId', postController.updatePost);
