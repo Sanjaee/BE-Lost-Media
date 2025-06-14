@@ -80,7 +80,8 @@ passport.use(
         // Create new user with UUID and clean username
         const baseUsername = profile.emails[0].value
           .split("@")[0]
-          .replace(/[^a-zA-Z0-9]/g, "");
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(0, 20); // Limit to 20 characters
         const newUser = await prisma.user.create({
           data: {
             userId: uuidv4(),

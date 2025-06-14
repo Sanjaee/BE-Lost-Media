@@ -84,7 +84,8 @@ router.post("/signin-google", async (req, res) => {
     // Create new user with display name as username
     const cleanUsername = name
       .replace(/[^a-zA-Z0-9\s]/g, "")
-      .replace(/\s+/g, "");
+      .replace(/\s+/g, "")
+      .slice(0, 20); // Limit to 20 characters
     const newUser = await prisma.user.create({
       data: {
         googleId: googleId,

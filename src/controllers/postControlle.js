@@ -170,7 +170,10 @@ const postController = {
               case "text":
                 return section.content || "";
               case "code":
-                return `\`\`\`\n${section.content || ""}\n\`\`\``;
+                // Preserve line breaks by using template literals
+                return `\`\`\`\n${
+                  section.content?.replace(/\n/g, "\n") || ""
+                }\n\`\`\``;
               case "html":
                 return section.content || "";
               case "image":
