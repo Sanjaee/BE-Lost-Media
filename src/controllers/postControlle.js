@@ -22,6 +22,8 @@ const postController = {
               userId: true,
               username: true,
               profilePic: true,
+              posts: true,
+              createdAt: true,
             },
           },
           sections: {

@@ -39,7 +39,7 @@ model User {
 }
 
 model Post {
-  postId        Int       @id @default(autoincrement())
+  postId        String    @id @default(uuid())
   userId        String
   title         String
   description   String?
@@ -63,8 +63,8 @@ model Post {
 }
 
 model Comment {
-  commentId Int      @id @default(autoincrement())
-  postId    Int
+  commentId String    @id @default(uuid())
+  postId    String
   userId    String
   content   String
   likesCount Int     @default(0)
@@ -79,10 +79,10 @@ model Comment {
 }
 
 model Like {
-  likeId    Int      @id @default(autoincrement())
+  likeId    String    @id @default(uuid())
   userId    String
-  postId    Int?
-  commentId Int?
+  postId    String?
+  commentId String?
   likeType  String
   createdAt DateTime @default(now())
 
@@ -94,11 +94,11 @@ model Like {
 }
 
 model Follow {
-  followId   Int      @id @default(autoincrement())
-  followerId String
+  followId    String    @id @default(uuid())
+  followerId  String
   followingId String
-  followedAt DateTime @default(now())
-  isActive   Boolean  @default(true)
+  followedAt  DateTime @default(now())
+  isActive    Boolean  @default(true)
 
   follower  User @relation("Follower", fields: [followerId], references: [userId])
   following User @relation("Following", fields: [followingId], references: [userId])
@@ -108,7 +108,7 @@ model Follow {
 }
 
 model Message {
-  messageId  Int      @id @default(autoincrement())
+  messageId  String    @id @default(uuid())
   senderId   String
   receiverId String
   content    String
@@ -124,7 +124,7 @@ model Message {
 }
 
 model Notification {
-  notifId   Int      @id @default(autoincrement())
+  notifId   String    @id @default(uuid())
   userId    String
   actorId   String
   type      String
@@ -140,12 +140,12 @@ model Notification {
 }
 
 model ContentSection {
-  sectionId   Int      @id @default(autoincrement())
+  sectionId   String    @id @default(uuid())
   type        String
   content     String?
   src         String?
   order       Int
-  postId      Int
+  postId      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
