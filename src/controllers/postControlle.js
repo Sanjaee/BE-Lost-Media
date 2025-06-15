@@ -214,6 +214,7 @@ const postController = {
             type: section.type,
             content: section.content || null,
             src: section.src || null,
+            imageDetail: section.imageDetail || [],
             order: section.order || index + 1,
           }));
 
@@ -308,6 +309,7 @@ const postController = {
               type: section.type,
               content: section.content,
               src: section.src,
+              imageDetail: section.imageDetail || [],
               order: section.order || index + 1,
             }));
 

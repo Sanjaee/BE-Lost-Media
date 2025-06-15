@@ -144,6 +144,7 @@ model ContentSection {
   type        String
   content     String?
   src         String?
+  imageDetail   String[]
   order       Int
   postId      String
   createdAt   DateTime @default(now())
