@@ -40,6 +40,51 @@ const authController = {
     }
   },
 
+  // Get user profile by user ID
+  getProfileById: async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      if (!userId) {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { userId: userId },
+        select: {
+          userId: true,
+          username: true,
+          profilePic: true,
+          bio: true,
+          createdAt: true,
+          followersCount: true,
+          followingCount: true,
+          role: true,
+          star: true,
+          posts: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: {
+              postId: true,
+              title: true,
+              createdAt: true,
+              commentsCount: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({ user });
+    } catch (error) {
+      console.error("Error getting profile by ID:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
   // Update user profile
   updateProfile: async (req, res) => {
     try {

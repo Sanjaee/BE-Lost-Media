@@ -154,6 +154,7 @@ router.get(
 
 // Auth status and profile routes
 router.get("/profile", isAuthenticated, authController.getProfile);
+router.get("/profile/:userId", authController.getProfileById);
 router.put("/profile", isAuthenticated, authController.updateProfile);
 
 // Token routes for NextAuth integration
