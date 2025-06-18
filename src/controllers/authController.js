@@ -23,6 +23,8 @@ const authController = {
           createdAt: true,
           followersCount: true,
           followingCount: true,
+          role: true,
+          star: true,
           posts: true,
         },
       });
@@ -119,15 +121,15 @@ const authController = {
         { expiresIn: "7d" }
       );
 
-      res.json({ 
-        success: true, 
-        token, 
+      res.json({
+        success: true,
+        token,
         user: {
           userId: user.userId,
           email: user.email,
           username: user.username,
           profilePic: user.profilePic,
-        }
+        },
       });
     } catch (error) {
       console.error("Error creating session:", error);
@@ -188,14 +190,16 @@ const authController = {
             followersCount: true,
             followingCount: true,
             posts: {
-              orderBy: { createdAt: 'desc' },
+              orderBy: { createdAt: "desc" },
               take: 10,
             },
           },
         });
 
         if (!user) {
-          return res.status(404).json({ error: "User not found", valid: false });
+          return res
+            .status(404)
+            .json({ error: "User not found", valid: false });
         }
 
         return res.json({ user, valid: true });
@@ -217,7 +221,7 @@ const authController = {
                 followersCount: true,
                 followingCount: true,
                 posts: {
-                  orderBy: { createdAt: 'desc' },
+                  orderBy: { createdAt: "desc" },
                   take: 10,
                 },
               },

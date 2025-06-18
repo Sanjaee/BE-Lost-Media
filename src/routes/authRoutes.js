@@ -95,6 +95,8 @@ router.post("/signin-google", async (req, res) => {
         bio: null,
         followersCount: 0,
         followingCount: 0,
+        role: "member",
+        star: 0,
       },
     });
 

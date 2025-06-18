@@ -28,6 +28,8 @@ passport.use(
             createdAt: true,
             followersCount: true,
             followingCount: true,
+            role: true,
+            star: true,
             posts: true,
           },
         });
@@ -49,6 +51,8 @@ passport.use(
             createdAt: true,
             followersCount: true,
             followingCount: true,
+            role: true,
+            star: true,
             posts: true,
           },
         });
@@ -71,6 +75,8 @@ passport.use(
               createdAt: true,
               followersCount: true,
               followingCount: true,
+              role: true,
+              star: true,
               posts: true,
             },
           });
@@ -89,6 +95,8 @@ passport.use(
             username: baseUsername,
             email: profile.emails[0].value,
             profilePic: profile.photos[0]?.value || null,
+            role: "member",
+            star: 0,
           },
           select: {
             userId: true,
@@ -100,6 +108,8 @@ passport.use(
             createdAt: true,
             followersCount: true,
             followingCount: true,
+            role: true,
+            star: true,
             posts: true,
           },
         });
@@ -131,6 +141,8 @@ passport.deserializeUser(async (userId, done) => {
         createdAt: true,
         followersCount: true,
         followingCount: true,
+        role: true,
+        star: true,
         posts: true,
       },
     });

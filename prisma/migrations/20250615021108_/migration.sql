@@ -1,29 +1,35 @@
 -- CreateTable
 CREATE TABLE "users" (
-    "userId" SERIAL NOT NULL,
+    "userId" TEXT NOT NULL,
     "googleId" TEXT,
     "username" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "fullName" TEXT,
     "profilePic" TEXT,
     "bio" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "followersCount" INTEGER NOT NULL DEFAULT 0,
     "followingCount" INTEGER NOT NULL DEFAULT 0,
+    "role" TEXT NOT NULL,
+    "star" INTEGER DEFAULT 0,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("userId")
 );
 
 -- CreateTable
 CREATE TABLE "posts" (
-    "postId" SERIAL NOT NULL,
-    "userId" INTEGER NOT NULL,
-    "content" TEXT NOT NULL,
+    "postId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "content" TEXT,
+    "category" TEXT NOT NULL,
     "mediaUrl" TEXT,
+    "viewsCount" INTEGER NOT NULL DEFAULT 0,
     "likesCount" INTEGER NOT NULL DEFAULT 0,
     "commentsCount" INTEGER NOT NULL DEFAULT 0,
     "sharesCount" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "posts_pkey" PRIMARY KEY ("postId")
@@ -31,9 +37,9 @@ CREATE TABLE "posts" (
 
 -- CreateTable
 CREATE TABLE "comments" (
-    "commentId" SERIAL NOT NULL,
-    "postId" INTEGER NOT NULL,
-    "userId" INTEGER NOT NULL,
+    "commentId" TEXT NOT NULL,
+    "postId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "likesCount" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -44,10 +50,10 @@ CREATE TABLE "comments" (
 
 -- CreateTable
 CREATE TABLE "likes" (
-    "likeId" SERIAL NOT NULL,
-    "userId" INTEGER NOT NULL,
-    "postId" INTEGER,
-    "commentId" INTEGER,
+    "likeId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "postId" TEXT,
+    "commentId" TEXT,
     "likeType" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -56,9 +62,9 @@ CREATE TABLE "likes" (
 
 -- CreateTable
 CREATE TABLE "followers" (
-    "followId" SERIAL NOT NULL,
-    "followerId" INTEGER NOT NULL,
-    "followingId" INTEGER NOT NULL,
+    "followId" TEXT NOT NULL,
+    "followerId" TEXT NOT NULL,
+    "followingId" TEXT NOT NULL,
     "followedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
 
@@ -67,9 +73,9 @@ CREATE TABLE "followers" (
 
 -- CreateTable
 CREATE TABLE "messages" (
-    "messageId" SERIAL NOT NULL,
-    "senderId" INTEGER NOT NULL,
-    "receiverId" INTEGER NOT NULL,
+    "messageId" TEXT NOT NULL,
+    "senderId" TEXT NOT NULL,
+    "receiverId" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "mediaUrl" TEXT,
     "isRead" BOOLEAN NOT NULL DEFAULT false,
@@ -81,9 +87,9 @@ CREATE TABLE "messages" (
 
 -- CreateTable
 CREATE TABLE "notifications" (
-    "notifId" SERIAL NOT NULL,
-    "userId" INTEGER NOT NULL,
-    "actorId" INTEGER NOT NULL,
+    "notifId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "actorId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "content" TEXT,
     "actionUrl" TEXT,
@@ -91,6 +97,21 @@ CREATE TABLE "notifications" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "notifications_pkey" PRIMARY KEY ("notifId")
+);
+
+-- CreateTable
+CREATE TABLE "content_sections" (
+    "sectionId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "content" TEXT,
+    "src" TEXT,
+    "imageDetail" TEXT[],
+    "order" INTEGER NOT NULL,
+    "postId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "content_sections_pkey" PRIMARY KEY ("sectionId")
 );
 
 -- CreateIndex
@@ -140,3 +161,6 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_userId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "users"("userId") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "content_sections" ADD CONSTRAINT "content_sections_postId_fkey" FOREIGN KEY ("postId") REFERENCES "posts"("postId") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -24,6 +24,8 @@ const postController = {
               profilePic: true,
               posts: true,
               createdAt: true,
+              role: true,
+              star: true,
             },
           },
           sections: {
