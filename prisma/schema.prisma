@@ -72,10 +72,13 @@ model Comment {
   likesCount Int     @default(0)
   createdAt DateTime @default(now())
   isDeleted Boolean  @default(false)
+  parentId  String?
 
   post   Post   @relation(fields: [postId], references: [postId])
   author User   @relation(fields: [userId], references: [userId])
   likes  Like[]
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [commentId])
+  replies Comment[] @relation("CommentReplies")
 
   @@map("comments")
 }

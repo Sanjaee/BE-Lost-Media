@@ -603,6 +603,61 @@ const postController = {
       });
     }
   },
+
+  // Reply to a comment
+  replyComment: async (req, res) => {
+    try {
+      const { postId, commentId } = req.params;
+      const { userId } = req.user;
+      const { content } = req.body;
+
+      if (!content || content.trim() === "") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Content is required" });
+      }
+
+      // Check if parent comment exists
+      const parentComment = await prisma.comment.findFirst({
+        where: { commentId, postId, isDeleted: false },
+      });
+      if (!parentComment) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Parent comment not found" });
+      }
+
+      // Create reply and increment commentsCount on post
+      const reply = await prisma.$transaction(async (tx) => {
+        const newReply = await tx.comment.create({
+          data: {
+            postId,
+            userId,
+            content,
+            parentId: commentId,
+          },
+          include: {
+            author: true,
+          },
+        });
+        await tx.post.update({
+          where: { postId },
+          data: { commentsCount: { increment: 1 } },
+        });
+        return newReply;
+      });
+
+      res
+        .status(201)
+        .json({ success: true, message: "Reply created", data: reply });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to create reply",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = postController;
