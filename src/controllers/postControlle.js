@@ -77,7 +77,7 @@ const postController = {
 
       const post = await prisma.post.findFirst({
         where: {
-          postId: parseInt(postId),
+          postId,
           isDeleted: false,
         },
         include: {
@@ -130,7 +130,7 @@ const postController = {
 
       // Increment view count
       await prisma.post.update({
-        where: { postId: parseInt(postId) },
+        where: { postId },
         data: { viewsCount: { increment: 1 } },
       });
 
@@ -270,7 +270,7 @@ const postController = {
       // Check if post exists and belongs to user
       const existingPost = await prisma.post.findFirst({
         where: {
-          postId: parseInt(postId),
+          postId,
           userId,
           isDeleted: false,
         },
@@ -288,7 +288,7 @@ const postController = {
       const result = await prisma.$transaction(async (tx) => {
         // Update the post
         const updatedPost = await tx.post.update({
-          where: { postId: parseInt(postId) },
+          where: { postId },
           data: {
             ...(title && { title }),
             ...(description && { description }),
@@ -301,13 +301,13 @@ const postController = {
         if (sections) {
           // Delete existing sections
           await tx.contentSection.deleteMany({
-            where: { postId: parseInt(postId) },
+            where: { postId },
           });
 
           // Create new sections
           if (sections.length > 0) {
             const sectionsData = sections.map((section, index) => ({
-              postId: parseInt(postId),
+              postId,
               type: section.type,
               content: section.content,
               src: section.src,
@@ -323,7 +323,7 @@ const postController = {
 
         // Fetch the complete updated post with sections
         return await tx.post.findUnique({
-          where: { postId: parseInt(postId) },
+          where: { postId },
           include: {
             author: {
               select: {
@@ -364,7 +364,7 @@ const postController = {
       // Check if post exists and belongs to user
       const existingPost = await prisma.post.findFirst({
         where: {
-          postId: parseInt(postId),
+          postId,
           userId,
           isDeleted: false,
         },
@@ -380,7 +380,7 @@ const postController = {
 
       // Soft delete the post
       await prisma.post.update({
-        where: { postId: parseInt(postId) },
+        where: { postId },
         data: { isDeleted: true },
       });
 
@@ -463,10 +463,12 @@ const postController = {
       // Check if post exists
       const post = await prisma.post.findFirst({
         where: {
-          postId: parseInt(postId),
+          postId,
           isDeleted: false,
         },
       });
+
+      console.log("Post ID:", postId, "User ID:", userId);
 
       if (!post) {
         return res.status(404).json({
@@ -478,7 +480,7 @@ const postController = {
       // Check if user already liked the post
       const existingLike = await prisma.like.findFirst({
         where: {
-          postId: parseInt(postId),
+          postId,
           userId,
         },
       });
@@ -491,7 +493,7 @@ const postController = {
             where: { likeId: existingLike.likeId },
           });
           await tx.post.update({
-            where: { postId: parseInt(postId) },
+            where: { postId },
             data: { likesCount: { decrement: 1 } },
           });
         });
@@ -501,12 +503,13 @@ const postController = {
         await prisma.$transaction(async (tx) => {
           await tx.like.create({
             data: {
-              postId: parseInt(postId),
+              postId,
               userId,
+              likeType: "post",
             },
           });
           await tx.post.update({
-            where: { postId: parseInt(postId) },
+            where: { postId },
             data: { likesCount: { increment: 1 } },
           });
         });
@@ -519,9 +522,83 @@ const postController = {
         isLiked: !existingLike,
       });
     } catch (error) {
+      console.error("Toggle like error:", error);
       res.status(500).json({
         success: false,
         message: "Failed to toggle like",
+        error: error.message,
+      });
+    }
+  },
+
+  // Create comment on post
+  createComment: async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const { userId } = req.user;
+      const { content } = req.body;
+
+      if (!content || content.trim() === "") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Content is required" });
+      }
+
+      // Check if post exists
+      const post = await prisma.post.findFirst({
+        where: { postId, isDeleted: false },
+      });
+      if (!post) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Post not found" });
+      }
+
+      // Create comment and increment commentsCount
+      const comment = await prisma.$transaction(async (tx) => {
+        const newComment = await tx.comment.create({
+          data: {
+            postId,
+            userId,
+            content,
+          },
+          include: {
+            author: true,
+          },
+        });
+        await tx.post.update({
+          where: { postId },
+          data: { commentsCount: { increment: 1 } },
+        });
+        return newComment;
+      });
+
+      res
+        .status(201)
+        .json({ success: true, message: "Comment created", data: comment });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to create comment",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get all comments for a post
+  getComments: async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const comments = await prisma.comment.findMany({
+        where: { postId, isDeleted: false },
+        orderBy: { createdAt: "asc" },
+        include: { author: true },
+      });
+      res.status(200).json({ success: true, data: comments });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch comments",
         error: error.message,
       });
     }
