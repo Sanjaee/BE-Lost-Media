@@ -31,9 +31,32 @@ router.post("/signin-google", async (req, res) => {
     // Check if user already exists with this Google ID
     let existingUser = await prisma.user.findUnique({
       where: { googleId: googleId },
+      select: {
+        userId: true,
+        googleId: true,
+        username: true,
+        email: true,
+        profilePic: true,
+        bio: true,
+        createdAt: true,
+        followersCount: true,
+        followingCount: true,
+        role: true,
+        star: true,
+        posts: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+      },
     });
 
     if (existingUser) {
+      console.log("Found existing user by Google ID:", {
+        userId: existingUser.userId,
+        role: existingUser.role,
+        star: existingUser.star,
+      });
+
       return res.json({
         success: true,
         user: {
@@ -46,6 +69,9 @@ router.post("/signin-google", async (req, res) => {
           createdAt: existingUser.createdAt,
           followersCount: existingUser.followersCount,
           followingCount: existingUser.followingCount,
+          role: existingUser.role,
+          star: existingUser.star,
+          posts: existingUser.posts,
         },
       });
     }
@@ -53,9 +79,32 @@ router.post("/signin-google", async (req, res) => {
     // Check if user exists with this email
     existingUser = await prisma.user.findUnique({
       where: { email: email },
+      select: {
+        userId: true,
+        googleId: true,
+        username: true,
+        email: true,
+        profilePic: true,
+        bio: true,
+        createdAt: true,
+        followersCount: true,
+        followingCount: true,
+        role: true,
+        star: true,
+        posts: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+      },
     });
 
     if (existingUser) {
+      console.log("Found existing user by email:", {
+        userId: existingUser.userId,
+        role: existingUser.role,
+        star: existingUser.star,
+      });
+
       // Update existing user with Google ID
       const updatedUser = await prisma.user.update({
         where: { userId: existingUser.userId },
@@ -63,6 +112,29 @@ router.post("/signin-google", async (req, res) => {
           googleId: googleId,
           profilePic: image || existingUser.profilePic,
         },
+        select: {
+          userId: true,
+          googleId: true,
+          username: true,
+          email: true,
+          profilePic: true,
+          bio: true,
+          createdAt: true,
+          followersCount: true,
+          followingCount: true,
+          role: true,
+          star: true,
+          posts: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
+        },
+      });
+
+      console.log("Updated user data:", {
+        userId: updatedUser.userId,
+        role: updatedUser.role,
+        star: updatedUser.star,
       });
 
       return res.json({
@@ -77,6 +149,9 @@ router.post("/signin-google", async (req, res) => {
           createdAt: updatedUser.createdAt,
           followersCount: updatedUser.followersCount,
           followingCount: updatedUser.followingCount,
+          role: updatedUser.role,
+          star: updatedUser.star,
+          posts: updatedUser.posts,
         },
       });
     }
@@ -98,6 +173,29 @@ router.post("/signin-google", async (req, res) => {
         role: "member",
         star: 0,
       },
+      select: {
+        userId: true,
+        googleId: true,
+        username: true,
+        email: true,
+        profilePic: true,
+        bio: true,
+        createdAt: true,
+        followersCount: true,
+        followingCount: true,
+        role: true,
+        star: true,
+        posts: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+      },
+    });
+
+    console.log("Created new user:", {
+      userId: newUser.userId,
+      role: newUser.role,
+      star: newUser.star,
     });
 
     res.json({
@@ -112,6 +210,9 @@ router.post("/signin-google", async (req, res) => {
         createdAt: newUser.createdAt,
         followersCount: newUser.followersCount,
         followingCount: newUser.followingCount,
+        role: newUser.role,
+        star: newUser.star,
+        posts: newUser.posts,
       },
     });
   } catch (error) {
@@ -178,6 +279,144 @@ router.get("/status", (req, res) => {
     });
   } else {
     res.json({ authenticated: false });
+  }
+});
+
+// Debug endpoint to check user data
+router.get("/debug/user/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+
+    const user = await prisma.user.findUnique({
+      where: { userId },
+      select: {
+        userId: true,
+        googleId: true,
+        username: true,
+        email: true,
+        profilePic: true,
+        bio: true,
+        createdAt: true,
+        followersCount: true,
+        followingCount: true,
+        role: true,
+        star: true,
+        posts: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user,
+      debug: {
+        hasRole: !!user.role,
+        hasStar: user.star !== null,
+        hasPosts: Array.isArray(user.posts),
+        postsCount: user.posts?.length || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Debug error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Debug endpoint to check all users and their roles
+router.get("/debug/users", async (req, res) => {
+  try {
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+
+    const users = await prisma.user.findMany({
+      select: {
+        userId: true,
+        username: true,
+        email: true,
+        role: true,
+        star: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.json({
+      success: true,
+      users,
+      summary: {
+        totalUsers: users.length,
+        roles: users.reduce((acc, user) => {
+          acc[user.role] = (acc[user.role] || 0) + 1;
+          return acc;
+        }, {}),
+        usersWithNullRole: users.filter((u) => !u.role).length,
+        usersWithNullStar: users.filter((u) => u.star === null).length,
+      },
+    });
+  } catch (error) {
+    console.error("Debug users error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Fix users with missing role or star
+router.post("/debug/fix-users", async (req, res) => {
+  try {
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+
+    // Find users with missing role or star
+    const usersToFix = await prisma.user.findMany({
+      where: {
+        OR: [{ role: null }, { role: "" }, { star: null }],
+      },
+      select: {
+        userId: true,
+        username: true,
+        email: true,
+        role: true,
+        star: true,
+      },
+    });
+
+    console.log("Users to fix:", usersToFix);
+
+    // Update users with missing role or star
+    const updatePromises = usersToFix.map((user) =>
+      prisma.user.update({
+        where: { userId: user.userId },
+        data: {
+          role: user.role || "member",
+          star: user.star !== null ? user.star : 0,
+        },
+      })
+    );
+
+    const updatedUsers = await Promise.all(updatePromises);
+
+    res.json({
+      success: true,
+      message: `Fixed ${updatedUsers.length} users`,
+      fixedUsers: updatedUsers.map((u) => ({
+        userId: u.userId,
+        username: u.username,
+        role: u.role,
+        star: u.star,
+      })),
+    });
+  } catch (error) {
+    console.error("Fix users error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

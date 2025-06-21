@@ -140,7 +140,7 @@ const authController = {
         return res.status(400).json({ error: "UserId and email required" });
       }
 
-      // Verify user exists
+      // Verify user exists with complete data
       const user = await prisma.user.findUnique({
         where: { userId },
         select: {
@@ -148,12 +148,28 @@ const authController = {
           email: true,
           username: true,
           profilePic: true,
+          bio: true,
+          createdAt: true,
+          followersCount: true,
+          followingCount: true,
+          role: true,
+          star: true,
+          posts: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
         },
       });
 
       if (!user || user.email !== email) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      console.log("CreateSession - User data from database:", {
+        userId: user.userId,
+        role: user.role,
+        star: user.star,
+      });
 
       // Generate JWT token
       const token = jwt.sign(
@@ -166,7 +182,7 @@ const authController = {
         { expiresIn: "7d" }
       );
 
-      res.json({
+      const responseData = {
         success: true,
         token,
         user: {
@@ -174,8 +190,23 @@ const authController = {
           email: user.email,
           username: user.username,
           profilePic: user.profilePic,
+          bio: user.bio,
+          createdAt: user.createdAt,
+          followersCount: user.followersCount,
+          followingCount: user.followingCount,
+          role: user.role,
+          star: user.star,
+          posts: user.posts,
         },
+      };
+
+      console.log("CreateSession - Response data:", {
+        userId: responseData.user.userId,
+        role: responseData.user.role,
+        star: responseData.user.star,
       });
+
+      res.json(responseData);
     } catch (error) {
       console.error("Error creating session:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -234,6 +265,8 @@ const authController = {
             createdAt: true,
             followersCount: true,
             followingCount: true,
+            role: true,
+            star: true,
             posts: {
               orderBy: { createdAt: "desc" },
               take: 10,
@@ -246,6 +279,12 @@ const authController = {
             .status(404)
             .json({ error: "User not found", valid: false });
         }
+
+        console.log("VerifyToken - User data from database:", {
+          userId: user.userId,
+          role: user.role,
+          star: user.star,
+        });
 
         return res.json({ user, valid: true });
       } catch (jwtError) {
@@ -265,6 +304,8 @@ const authController = {
                 createdAt: true,
                 followersCount: true,
                 followingCount: true,
+                role: true,
+                star: true,
                 posts: {
                   orderBy: { createdAt: "desc" },
                   take: 10,

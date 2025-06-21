@@ -22,8 +22,8 @@ model User {
   createdAt      DateTime    @default(now())
   followersCount Int         @default(0)
   followingCount Int         @default(0)
-  role           String      
-  star           Int?        @default(0)
+  role           String      @default("member")
+  star           Int         @default(0)
 
   posts            Post[]
   comments         Comment[]
