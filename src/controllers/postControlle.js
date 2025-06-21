@@ -87,6 +87,7 @@ const postController = {
               username: true,
               profilePic: true,
               bio: true,
+              role: true,
             },
           },
           sections: {
@@ -563,7 +564,14 @@ const postController = {
             content,
           },
           include: {
-            author: true,
+            author: {
+              select: {
+                userId: true,
+                username: true,
+                profilePic: true,
+                role: true,
+              },
+            },
           },
         });
         await tx.post.update({
@@ -592,7 +600,16 @@ const postController = {
       const comments = await prisma.comment.findMany({
         where: { postId, isDeleted: false },
         orderBy: { createdAt: "asc" },
-        include: { author: true },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
       });
       res.status(200).json({ success: true, data: comments });
     } catch (error) {
@@ -637,7 +654,14 @@ const postController = {
             parentId: commentId,
           },
           include: {
-            author: true,
+            author: {
+              select: {
+                userId: true,
+                username: true,
+                profilePic: true,
+                role: true,
+              },
+            },
           },
         });
         await tx.post.update({
