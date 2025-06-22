@@ -88,6 +88,7 @@ const postController = {
               profilePic: true,
               bio: true,
               role: true,
+              star: true,
             },
           },
           sections: {
