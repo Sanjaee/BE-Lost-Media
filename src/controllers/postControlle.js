@@ -186,8 +186,6 @@ const postController = {
           .sort((a, b) => (a.order || 0) - (b.order || 0))
           .map((section) => {
             switch (section.type) {
-              case "text":
-                return section.content || "";
               case "code":
                 // Preserve line breaks by using template literals
                 return `\`\`\`\n${
