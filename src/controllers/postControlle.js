@@ -7,6 +7,7 @@ const postController = {
     try {
       const { page = 1, limit = 10, category, userId } = req.query;
       const skip = (page - 1) * limit;
+      const currentUserId = req.user?.userId; // Get current user ID if authenticated
 
       const whereClause = {
         isDeleted: false,
@@ -33,6 +34,13 @@ const postController = {
               order: "asc",
             },
           },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
           _count: {
             select: {
               comments: true,
@@ -47,13 +55,20 @@ const postController = {
         take: parseInt(limit),
       });
 
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
       const totalPosts = await prisma.post.count({
         where: whereClause,
       });
 
       res.status(200).json({
         success: true,
-        data: posts,
+        data: transformedPosts,
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalPosts / limit),
@@ -488,13 +503,15 @@ const postController = {
       });
 
       let message;
+      let updatedPost;
+
       if (existingLike) {
         // Unlike the post
         await prisma.$transaction(async (tx) => {
           await tx.like.delete({
             where: { likeId: existingLike.likeId },
           });
-          await tx.post.update({
+          updatedPost = await tx.post.update({
             where: { postId },
             data: { likesCount: { decrement: 1 } },
           });
@@ -510,7 +527,7 @@ const postController = {
               likeType: "post",
             },
           });
-          await tx.post.update({
+          updatedPost = await tx.post.update({
             where: { postId },
             data: { likesCount: { increment: 1 } },
           });
@@ -522,6 +539,7 @@ const postController = {
         success: true,
         message,
         isLiked: !existingLike,
+        likesCount: updatedPost.likesCount,
       });
     } catch (error) {
       console.error("Toggle like error:", error);
