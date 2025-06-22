@@ -92,7 +92,7 @@ const authController = {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const { bio, username } = req.body;
+      const { bio, username, profilePic } = req.body;
 
       if (username && username !== req.user.username) {
         const existingUser = await prisma.user.findUnique({
@@ -109,6 +109,7 @@ const authController = {
         data: {
           ...(bio !== undefined && { bio }),
           ...(username && { username }),
+          ...(profilePic && { profilePic }),
         },
         select: {
           userId: true,

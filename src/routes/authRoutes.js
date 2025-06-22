@@ -2,6 +2,7 @@
 const express = require("express");
 const passport = require("passport");
 const authController = require("../controllers/authController");
+const authMiddleware = require("../middleware/authMiddleware");
 const router = express.Router();
 
 // Middleware to check if user is authenticated
@@ -234,7 +235,7 @@ router.post("/create-session", authController.createSession);
 router.get(
   "/google",
   passport.authenticate("google", {
-    scope: ["profile", "email"],
+    scope: ["email"],
   })
 );
 
@@ -256,7 +257,7 @@ router.get(
 // Auth status and profile routes
 router.get("/profile", isAuthenticated, authController.getProfile);
 router.get("/profile/:userId", authController.getProfileById);
-router.put("/profile", isAuthenticated, authController.updateProfile);
+router.put("/profile", authMiddleware, authController.updateProfile);
 
 // Token routes for NextAuth integration
 router.get("/token", isAuthenticated, authController.generateToken);
