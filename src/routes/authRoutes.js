@@ -422,18 +422,7 @@ router.post("/debug/fix-users", async (req, res) => {
   }
 });
 
-// Notifikasi
-router.post(
-  "/notification/public",
-  notificationController.createPublicNotification
-);
-router.post(
-  "/notification/user",
-  notificationController.createUserNotification
-);
-router.get(
-  "/notification/user/:userId",
-  notificationController.getUserNotifications
-);
+// Get all staff users (owner, admin, mod) - protected
+router.get("/staff/users", authMiddleware, authController.getAllStaffUsers);
 
 module.exports = router;

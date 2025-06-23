@@ -339,6 +339,34 @@ const authController = {
       res.json({ message: "Logged out successfully" });
     });
   },
+
+  // Get all users with role owner, admin, or mod
+  getAllStaffUsers: async (req, res) => {
+    try {
+      const staffUsers = await prisma.user.findMany({
+        where: {
+          role: {
+            in: ["owner", "admin", "mod"],
+          },
+        },
+        select: {
+          userId: true,
+          username: true,
+          email: true,
+          role: true,
+          profilePic: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      res.json({ success: true, users: staffUsers });
+    } catch (error) {
+      console.error("Error getting staff users:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };
 
 module.exports = authController;
