@@ -3,6 +3,7 @@ const express = require("express");
 const passport = require("passport");
 const authController = require("../controllers/authController");
 const authMiddleware = require("../middleware/authMiddleware");
+const notificationController = require("../controllers/notificationController");
 const router = express.Router();
 
 // Middleware to check if user is authenticated
@@ -420,5 +421,19 @@ router.post("/debug/fix-users", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// Notifikasi
+router.post(
+  "/notification/public",
+  notificationController.createPublicNotification
+);
+router.post(
+  "/notification/user",
+  notificationController.createUserNotification
+);
+router.get(
+  "/notification/user/:userId",
+  notificationController.getUserNotifications
+);
 
 module.exports = router;

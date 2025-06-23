@@ -130,7 +130,7 @@ model Message {
 
 model Notification {
   notifId   String    @id @default(uuid())
-  userId    String
+  userId    String?
   actorId   String
   type      String
   content   String?
@@ -138,7 +138,7 @@ model Notification {
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user  User @relation("UserNotifications", fields: [userId], references: [userId])
+  user  User? @relation("UserNotifications", fields: [userId], references: [userId])
   actor User @relation("ActorNotifications", fields: [actorId], references: [userId])
 
   @@map("notifications")

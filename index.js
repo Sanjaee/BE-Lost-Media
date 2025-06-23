@@ -6,6 +6,7 @@ const session = require("express-session");
 const passport = require("./src/config/passportConfig");
 const authRoutes = require("./src/routes/authRoutes");
 const postRoutes = require("./src/routes/postRoutes");
+const notificationRoutes = require("./src/routes/notificationRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -44,6 +45,7 @@ app.use(passport.session());
 // Routes
 app.use("/auth", authRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Health check route
 app.get("/health", (req, res) => {
