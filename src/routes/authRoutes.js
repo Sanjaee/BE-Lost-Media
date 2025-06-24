@@ -53,12 +53,6 @@ router.post("/signin-google", async (req, res) => {
     });
 
     if (existingUser) {
-      console.log("Found existing user by Google ID:", {
-        userId: existingUser.userId,
-        role: existingUser.role,
-        star: existingUser.star,
-      });
-
       return res.json({
         success: true,
         user: {
@@ -101,11 +95,6 @@ router.post("/signin-google", async (req, res) => {
     });
 
     if (existingUser) {
-      console.log("Found existing user by email:", {
-        userId: existingUser.userId,
-        role: existingUser.role,
-        star: existingUser.star,
-      });
 
       // Update existing user with Google ID
       const updatedUser = await prisma.user.update({
@@ -131,12 +120,6 @@ router.post("/signin-google", async (req, res) => {
             take: 10,
           },
         },
-      });
-
-      console.log("Updated user data:", {
-        userId: updatedUser.userId,
-        role: updatedUser.role,
-        star: updatedUser.star,
       });
 
       return res.json({
@@ -192,12 +175,6 @@ router.post("/signin-google", async (req, res) => {
           take: 10,
         },
       },
-    });
-
-    console.log("Created new user:", {
-      userId: newUser.userId,
-      role: newUser.role,
-      star: newUser.star,
     });
 
     res.json({
@@ -391,8 +368,6 @@ router.post("/debug/fix-users", async (req, res) => {
       },
     });
 
-    console.log("Users to fix:", usersToFix);
-
     // Update users with missing role or star
     const updatePromises = usersToFix.map((user) =>
       prisma.user.update({
@@ -424,5 +399,7 @@ router.post("/debug/fix-users", async (req, res) => {
 
 // Get all staff users (owner, admin, mod) - protected
 router.get("/staff/users", authMiddleware, authController.getAllStaffUsers);
+// Update user role (protected)
+router.put("/staff/users/role", authMiddleware, authController.updateRole);
 
 module.exports = router;

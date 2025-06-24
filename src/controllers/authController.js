@@ -166,12 +166,6 @@ const authController = {
         return res.status(404).json({ error: "User not found" });
       }
 
-      console.log("CreateSession - User data from database:", {
-        userId: user.userId,
-        role: user.role,
-        star: user.star,
-      });
-
       // Generate JWT token
       const token = jwt.sign(
         {
@@ -200,12 +194,6 @@ const authController = {
           posts: user.posts,
         },
       };
-
-      console.log("CreateSession - Response data:", {
-        userId: responseData.user.userId,
-        role: responseData.user.role,
-        star: responseData.user.star,
-      });
 
       res.json(responseData);
     } catch (error) {
@@ -280,12 +268,6 @@ const authController = {
             .status(404)
             .json({ error: "User not found", valid: false });
         }
-
-        console.log("VerifyToken - User data from database:", {
-          userId: user.userId,
-          role: user.role,
-          star: user.star,
-        });
 
         return res.json({ user, valid: true });
       } catch (jwtError) {
@@ -364,6 +346,56 @@ const authController = {
       res.json({ success: true, users: staffUsers });
     } catch (error) {
       console.error("Error getting staff users:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Update user role
+  updateRole: async (req, res) => {
+    try {
+      // Allow if requester is owner (from JWT or from body.currentRole)
+      const roleFromJwt = req.user && req.user.role;
+      const roleFromBody = req.body.currentRole;
+      if (roleFromJwt !== "owner" && roleFromBody !== "owner") {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only owner can update roles" });
+      }
+      const { userId, role } = req.body;
+      console.log(
+        "Updating role for user:",
+        userId,
+        "to:",
+        role,
+        "by:",
+        roleFromJwt || roleFromBody
+      );
+      const allowedRoles = ["owner", "admin", "mod", "god", "vip", "member"];
+      if (!userId || !role) {
+        return res.status(400).json({ error: "UserId and role are required" });
+      }
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+      const user = await prisma.user.findUnique({ where: { userId } });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const updatedUser = await prisma.user.update({
+        where: { userId },
+        data: { role },
+        select: {
+          userId: true,
+          username: true,
+          email: true,
+          role: true,
+          profilePic: true,
+          createdAt: true,
+        },
+      });
+      res.json({ success: true, user: updatedUser });
+    } catch (error) {
+      console.error("Error updating user role:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   },

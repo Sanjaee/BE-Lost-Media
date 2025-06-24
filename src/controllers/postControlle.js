@@ -483,8 +483,6 @@ const postController = {
         },
       });
 
-      console.log("Post ID:", postId, "User ID:", userId);
-
       if (!post) {
         return res.status(404).json({
           success: false,
