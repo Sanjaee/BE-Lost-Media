@@ -325,12 +325,17 @@ const authController = {
   // Get all users with role owner, admin, or mod
   getAllStaffUsers: async (req, res) => {
     try {
-      const staffUsers = await prisma.user.findMany({
-        where: {
-          role: {
-            in: ["owner", "admin", "mod"],
-          },
-        },
+      const allowedRoles = ["owner", "admin", "mod"];
+      // Ambil role dari header jika ada, fallback ke req.user.role
+      const requesterRole = req.headers["x-user-role"] || req.user.role;
+      console.log("Requester role:", requesterRole);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+      // Only fetch users with staff roles
+      const users = await prisma.user.findMany({
         select: {
           userId: true,
           username: true,
@@ -343,9 +348,9 @@ const authController = {
           createdAt: "desc",
         },
       });
-      res.json({ success: true, users: staffUsers });
+      res.json({ success: true, users, currentUserRole: requesterRole });
     } catch (error) {
-      console.error("Error getting staff users:", error);
+      console.error("Error getting all staff users:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   },
