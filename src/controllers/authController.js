@@ -367,14 +367,6 @@ const authController = {
           .json({ error: "Forbidden: Only owner can update roles" });
       }
       const { userId, role } = req.body;
-      console.log(
-        "Updating role for user:",
-        userId,
-        "to:",
-        role,
-        "by:",
-        roleFromJwt || roleFromBody
-      );
       const allowedRoles = ["owner", "admin", "mod", "god", "vip", "member"];
       if (!userId || !role) {
         return res.status(400).json({ error: "UserId and role are required" });
