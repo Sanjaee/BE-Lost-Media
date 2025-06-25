@@ -396,6 +396,77 @@ const authController = {
       res.status(500).json({ error: "Internal server error" });
     }
   },
+
+  // Update user star (hanya untuk owner, admin, mod)
+  updateStar: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      // Ambil role dari header jika ada, fallback ke req.user.role
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can update star" });
+      }
+      const { userId, star } = req.body;
+      if (!userId || typeof star !== "number") {
+        return res
+          .status(400)
+          .json({ error: "UserId and star (number) are required" });
+      }
+      const user = await prisma.user.findUnique({ where: { userId } });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const updatedUser = await prisma.user.update({
+        where: { userId },
+        data: { star },
+        select: {
+          userId: true,
+          username: true,
+          email: true,
+          role: true,
+          star: true,
+          profilePic: true,
+          createdAt: true,
+        },
+      });
+      res.json({ success: true, user: updatedUser });
+    } catch (error) {
+      console.error("Error updating user star:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Get star by userId (hanya untuk owner, admin, mod)
+  getStarById: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+      const { userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ error: "UserId is required" });
+      }
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: { star: true },
+      });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json({ success: true, star: user.star });
+    } catch (error) {
+      console.error("Error getting user star:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };
 
 module.exports = authController;

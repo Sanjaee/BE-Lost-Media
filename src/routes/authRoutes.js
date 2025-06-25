@@ -95,7 +95,6 @@ router.post("/signin-google", async (req, res) => {
     });
 
     if (existingUser) {
-
       // Update existing user with Google ID
       const updatedUser = await prisma.user.update({
         where: { userId: existingUser.userId },
@@ -401,5 +400,13 @@ router.post("/debug/fix-users", async (req, res) => {
 router.get("/staff/users", authMiddleware, authController.getAllStaffUsers);
 // Update user role (protected)
 router.put("/staff/users/role", authMiddleware, authController.updateRole);
+// Update user star (protected)
+router.put("/staff/users/star", authMiddleware, authController.updateStar);
+// Get user star by id (protected)
+router.get(
+  "/staff/users/:userId/star",
+  authMiddleware,
+  authController.getStarById
+);
 
 module.exports = router;
