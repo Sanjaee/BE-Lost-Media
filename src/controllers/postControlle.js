@@ -697,6 +697,24 @@ const postController = {
       });
     }
   },
+
+  // Increment view count only
+  incrementViewCount: async (req, res) => {
+    try {
+      const { postId } = req.params;
+      await prisma.post.update({
+        where: { postId },
+        data: { viewsCount: { increment: 1 } },
+      });
+      res.status(200).json({ success: true });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to increment view count",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = postController;

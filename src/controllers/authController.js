@@ -328,7 +328,6 @@ const authController = {
       const allowedRoles = ["owner", "admin", "mod"];
       // Ambil role dari header jika ada, fallback ke req.user.role
       const requesterRole = req.headers["x-user-role"] || req.user.role;
-      console.log("Requester role:", requesterRole);
       if (!allowedRoles.includes(requesterRole)) {
         return res
           .status(403)

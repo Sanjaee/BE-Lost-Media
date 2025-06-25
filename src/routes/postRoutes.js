@@ -29,6 +29,7 @@ const optionalAuth = (req, res, next) => {
 router.get("/", optionalAuth, postController.getAllPosts);
 router.get("/:postId", postController.getPostById);
 router.get("/:postId/comments", postController.getComments);
+router.post("/:postId/view", postController.incrementViewCount);
 
 // Protected routes (authentication required)
 // Apply auth middleware to all routes below
