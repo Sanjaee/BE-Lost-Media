@@ -774,6 +774,8 @@ const postController = {
           .json({ error: "Forbidden: Only staff can access this endpoint" });
       }
 
+      const currentUserId = req.user?.userId;
+
       const posts = await prisma.post.findMany({
         where: {
           isPublished: false,
@@ -791,14 +793,34 @@ const postController = {
           sections: {
             orderBy: { order: "asc" },
           },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
 
+      // Transform posts to include isLiked field (like getAllPosts)
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
       res.status(200).json({
         success: true,
-        data: posts,
-        count: posts.length,
+        data: transformedPosts,
+        count: transformedPosts.length,
       });
     } catch (error) {
       console.error("Error fetching unpublished posts:", error);
