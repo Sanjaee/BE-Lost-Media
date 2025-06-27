@@ -715,6 +715,99 @@ const postController = {
       });
     }
   },
+
+  // Publish or unpublish a post (only for certain roles)
+  setPublishStatus: async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const { isPublished } = req.body;
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to publish/unpublish posts.",
+        });
+      }
+
+      // Check if post exists
+      const post = await prisma.post.findFirst({
+        where: { postId, isDeleted: false },
+      });
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          message: "Post not found",
+        });
+      }
+
+      // Update publish status
+      const updated = await prisma.post.update({
+        where: { postId },
+        data: { isPublished: !!isPublished },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Post has been ${isPublished ? "published" : "unpublished"}`,
+        data: updated,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to update publish status",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get all unpublished posts (only for certain roles)
+  getUnpublishedPosts: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+
+      const posts = await prisma.post.findMany({
+        where: {
+          isPublished: false,
+          isDeleted: false,
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          sections: {
+            orderBy: { order: "asc" },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: posts,
+        count: posts.length,
+      });
+    } catch (error) {
+      console.error("Error fetching unpublished posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch unpublished posts",
+      });
+    }
+  },
 };
 
 module.exports = postController;

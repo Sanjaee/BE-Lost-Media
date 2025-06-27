@@ -55,6 +55,7 @@ model Post {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   isDeleted     Boolean   @default(false)
+  isPublished   Boolean   @default(false)
   
   author   User      @relation(fields: [userId], references: [userId])
   comments Comment[]

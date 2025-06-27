@@ -35,6 +35,7 @@ router.post("/:postId/view", postController.incrementViewCount);
 // Apply auth middleware to all routes below
 router.use(authMiddleware);
 
+router.get("/manage/unpublished", postController.getUnpublishedPosts);
 router.post("/", postController.createPost);
 router.put("/:postId", postController.updatePost);
 router.delete("/:postId", postController.deletePost);
@@ -42,5 +43,6 @@ router.get("/user/my-posts", postController.getUserPosts);
 router.post("/:postId/like", postController.toggleLike);
 router.post("/:postId/comment", postController.createComment);
 router.post("/:postId/comments/:commentId/reply", postController.replyComment);
+router.post("/manage/:postId/publish", postController.setPublishStatus);
 
 module.exports = router;
