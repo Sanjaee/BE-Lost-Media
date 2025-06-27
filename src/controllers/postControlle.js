@@ -831,6 +831,143 @@ const postController = {
     }
   },
 
+  // Search unpublished posts (only for certain roles)
+  searchUnpublishedPosts: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+
+      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const skip = (page - 1) * limit;
+      const currentUserId = req.user?.userId;
+
+      // Build search conditions
+      const whereConditions = {
+        isPublished: false,
+        isDeleted: false,
+      };
+
+      // Search in title, description, and content
+      if (q && q.trim() !== "") {
+        const searchTerm = q.trim();
+        whereConditions.OR = [
+          {
+            title: {
+              contains: searchTerm,
+              mode: "insensitive", // Case insensitive search
+            },
+          },
+          {
+            description: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+          {
+            content: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+        ];
+      }
+
+      // Filter by category
+      if (category && category.trim() !== "") {
+        whereConditions.category = {
+          contains: category.trim(),
+          mode: "insensitive",
+        };
+      }
+
+      // Filter by author
+      if (author && author.trim() !== "") {
+        whereConditions.author = {
+          username: {
+            contains: author.trim(),
+            mode: "insensitive",
+          },
+        };
+      }
+
+      const posts = await prisma.post.findMany({
+        where: whereConditions,
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          sections: {
+            orderBy: { order: "asc" },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+      });
+
+      // Get total count for pagination
+      const totalPosts = await prisma.post.count({
+        where: whereConditions,
+      });
+
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: transformedPosts,
+        count: transformedPosts.length,
+        totalCount: totalPosts,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPosts / limit),
+          totalItems: totalPosts,
+          itemsPerPage: parseInt(limit),
+        },
+        searchParams: {
+          query: q || "",
+          category: category || "",
+          author: author || "",
+        },
+      });
+    } catch (error) {
+      console.error("Error searching unpublished posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to search unpublished posts",
+        error: error.message,
+      });
+    }
+  },
+
   // Force delete a post by ID (only for certain roles)
   forceDeletePostById: async (req, res) => {
     try {

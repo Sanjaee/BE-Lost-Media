@@ -36,6 +36,7 @@ router.post("/:postId/view", postController.incrementViewCount);
 router.use(authMiddleware);
 
 router.get("/manage/unpublished", postController.getUnpublishedPosts);
+router.get("/manage/search", postController.searchUnpublishedPosts);
 router.post("/", postController.createPost);
 router.put("/:postId", postController.updatePost);
 router.delete("/:postId", postController.deletePost);
