@@ -808,6 +808,55 @@ const postController = {
       });
     }
   },
+
+  // Force delete a post by ID (only for certain roles)
+  forceDeletePostById: async (req, res) => {
+    try {
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to force delete posts.",
+        });
+      }
+
+      const { postId } = req.params;
+      if (!postId) {
+        return res.status(400).json({
+          success: false,
+          message: "postId is required",
+        });
+      }
+
+      // Check if post exists
+      const post = await prisma.post.findUnique({ where: { postId } });
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          message: "Post not found",
+        });
+      }
+
+      // Delete related data first
+      await prisma.contentSection.deleteMany({ where: { postId } });
+      await prisma.comment.deleteMany({ where: { postId } });
+      await prisma.like.deleteMany({ where: { postId } });
+      await prisma.post.delete({ where: { postId } });
+
+      res.status(200).json({
+        success: true,
+        message: "Post and related data have been force deleted.",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to force delete post",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = postController;
