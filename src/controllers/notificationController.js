@@ -211,6 +211,41 @@ module.exports = {
     }
   },
 
+  // Create notification for post deletion
+  createPostDeletionNotification: async (
+    postId,
+    postTitle,
+    authorUserId,
+    deleterUserId,
+    deleterRole
+  ) => {
+    try {
+      const notification = await prisma.notification.create({
+        data: {
+          userId: authorUserId,
+          actorId: deleterUserId,
+          type: "post_deleted",
+          content: `Post "${postTitle}" telah dihapus oleh ${deleterRole}.`,
+          actionUrl: `/profile/${authorUserId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating post deletion notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
   // Get notifications by type for a specific user
   getUserNotificationsByType: async (req, res) => {
     try {

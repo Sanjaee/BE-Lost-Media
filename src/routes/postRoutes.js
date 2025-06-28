@@ -51,5 +51,6 @@ router.post("/:postId/comments/:commentId/reply", postController.replyComment);
 router.post("/manage/:postId/publish", postController.setPublishStatus);
 router.post("/manage/:postId/force-delete", postController.forceDeletePostById);
 router.post("/manage/bulk-approve", postController.bulkApprovePosts);
+router.post("/manage/bulk-delete", postController.bulkDeletePublishedPosts);
 
 module.exports = router;

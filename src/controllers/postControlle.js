@@ -1406,6 +1406,14 @@ const postController = {
           isPublished: true,
           isDeleted: false,
         },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
       });
 
       if (!post) {
@@ -1415,15 +1423,33 @@ const postController = {
         });
       }
 
-      // Delete related data first
-      await prisma.contentSection.deleteMany({ where: { postId } });
-      await prisma.comment.deleteMany({ where: { postId } });
-      await prisma.like.deleteMany({ where: { postId } });
-      await prisma.post.delete({ where: { postId } });
+      // Delete related data and send notification in a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Delete related data first
+        await tx.contentSection.deleteMany({ where: { postId } });
+        await tx.comment.deleteMany({ where: { postId } });
+        await tx.like.deleteMany({ where: { postId } });
+        await tx.post.delete({ where: { postId } });
+
+        // Create notification for the author
+        const notification = await tx.notification.create({
+          data: {
+            userId: post.author.userId,
+            actorId: req.user.userId,
+            type: "post_deleted",
+            content: `Post "${post.title}" telah dihapus oleh ${requesterRole}.`,
+            actionUrl: `/profile/${post.author.userId}`,
+          },
+        });
+
+        return { notification };
+      });
 
       res.status(200).json({
         success: true,
         message: "Published post has been deleted successfully.",
+        notificationSent: true,
+        data: result,
       });
     } catch (error) {
       res.status(500).json({
@@ -1523,6 +1549,102 @@ const postController = {
       res.status(500).json({
         success: false,
         message: "Failed to bulk approve posts",
+        error: error.message,
+      });
+    }
+  },
+
+  // Bulk delete published posts (only for certain roles)
+  bulkDeletePublishedPosts: async (req, res) => {
+    try {
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to bulk delete published posts.",
+        });
+      }
+
+      const { postIds } = req.body;
+      if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "postIds array is required and must not be empty",
+        });
+      }
+
+      // Get all published posts that match the provided IDs
+      const posts = await prisma.post.findMany({
+        where: {
+          postId: { in: postIds },
+          isPublished: true,
+          isDeleted: false,
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      if (posts.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No published posts found with the provided IDs",
+        });
+      }
+
+      const results = await prisma.$transaction(async (tx) => {
+        const deletedPosts = [];
+        const notifications = [];
+
+        for (const post of posts) {
+          // Delete related data first
+          await tx.contentSection.deleteMany({
+            where: { postId: post.postId },
+          });
+          await tx.comment.deleteMany({ where: { postId: post.postId } });
+          await tx.like.deleteMany({ where: { postId: post.postId } });
+          await tx.post.delete({ where: { postId: post.postId } });
+
+          deletedPosts.push(post);
+
+          // Create notification for the author
+          const notification = await tx.notification.create({
+            data: {
+              userId: post.author.userId,
+              actorId: req.user.userId,
+              type: "post_deleted",
+              content: `Post "${post.title}" telah dihapus oleh ${requesterRole}.`,
+              actionUrl: `/profile/${post.author.userId}`,
+            },
+          });
+
+          notifications.push(notification);
+        }
+
+        return { deletedPosts, notifications };
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `${results.deletedPosts.length} posts have been deleted`,
+        data: {
+          deletedCount: results.deletedPosts.length,
+          notificationCount: results.notifications.length,
+          postIds: results.deletedPosts.map((post) => post.postId),
+        },
+      });
+    } catch (error) {
+      console.error("Error bulk deleting posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to bulk delete posts",
         error: error.message,
       });
     }
