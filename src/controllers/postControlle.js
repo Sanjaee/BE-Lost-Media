@@ -85,6 +85,131 @@ const postController = {
     }
   },
 
+  // Search all published posts (lightweight search for everyone)
+  searchAllPosts: async (req, res) => {
+    try {
+      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const skip = (page - 1) * limit;
+      const currentUserId = req.user?.userId; // Get current user ID if authenticated
+
+      // Build search conditions
+      const whereClause = {
+        isDeleted: false,
+        isPublished: true, // Only published posts
+      };
+
+      // Search in title, description, and content
+      if (q && q.trim() !== "") {
+        const searchTerm = q.trim();
+        whereClause.OR = [
+          {
+            title: {
+              contains: searchTerm,
+              mode: "insensitive", // Case insensitive search
+            },
+          },
+          {
+            description: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+          {
+            content: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+        ];
+      }
+
+      // Filter by category
+      if (category && category.trim() !== "") {
+        whereClause.category = {
+          contains: category.trim(),
+          mode: "insensitive",
+        };
+      }
+
+      // Filter by author
+      if (author && author.trim() !== "") {
+        whereClause.author = {
+          username: {
+            contains: author.trim(),
+            mode: "insensitive",
+          },
+        };
+      }
+
+      const posts = await prisma.post.findMany({
+        where: whereClause,
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+      });
+
+      // Get total count for pagination
+      const totalPosts = await prisma.post.count({
+        where: whereClause,
+      });
+
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: transformedPosts,
+        count: transformedPosts.length,
+        totalCount: totalPosts,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPosts / limit),
+          totalItems: totalPosts,
+          itemsPerPage: parseInt(limit),
+        },
+        searchParams: {
+          query: q || "",
+          category: category || "",
+          author: author || "",
+        },
+      });
+    } catch (error) {
+      console.error("Error searching posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to search posts",
+        error: error.message,
+      });
+    }
+  },
+
   // Get single post by ID with ordered content sections
   getPostById: async (req, res) => {
     try {

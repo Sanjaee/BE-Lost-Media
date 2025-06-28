@@ -27,6 +27,7 @@ const optionalAuth = (req, res, next) => {
 
 // Public routes (no authentication required)
 router.get("/", optionalAuth, postController.getAllPosts);
+router.get("/search", optionalAuth, postController.searchAllPosts);
 router.get("/:postId", postController.getPostById);
 router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/view", postController.incrementViewCount);
