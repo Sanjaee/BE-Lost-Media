@@ -466,6 +466,126 @@ const authController = {
       res.status(500).json({ error: "Internal server error" });
     }
   },
+
+  // Search all users with pagination and filtering
+  searchAllUsers: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole = req.headers["x-user-role"] || req.user?.role;
+
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+
+      const {
+        search = "",
+        page = 1,
+        limit = 20,
+        role = "",
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = req.query;
+
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      const offset = (pageNum - 1) * limitNum;
+
+      // Build where clause for filtering
+      const whereClause = {
+        AND: [],
+      };
+
+      // Add search filter
+      if (search && search.trim()) {
+        whereClause.AND.push({
+          OR: [
+            {
+              username: {
+                contains: search.trim(),
+                mode: "insensitive",
+              },
+            },
+            {
+              email: {
+                contains: search.trim(),
+                mode: "insensitive",
+              },
+            },
+          ],
+        });
+      }
+
+      // Add role filter
+      if (role && role.trim() && role !== "all") {
+        whereClause.AND.push({
+          role: role.trim(),
+        });
+      }
+
+      // Remove empty AND array if no filters
+      if (whereClause.AND.length === 0) {
+        delete whereClause.AND;
+      }
+
+      // Validate sort fields
+      const allowedSortFields = [
+        "username",
+        "email",
+        "role",
+        "createdAt",
+        "star",
+      ];
+      const validSortBy = allowedSortFields.includes(sortBy)
+        ? sortBy
+        : "createdAt";
+      const validSortOrder = sortOrder === "asc" ? "asc" : "desc";
+
+      // Get total count for pagination
+      const totalCount = await prisma.user.count({
+        where: whereClause.AND?.length > 0 ? whereClause : {},
+      });
+
+      // Get users with pagination
+      const users = await prisma.user.findMany({
+        where: whereClause.AND?.length > 0 ? whereClause : {},
+        select: {
+          userId: true,
+          username: true,
+          email: true,
+          role: true,
+          profilePic: true,
+          createdAt: true,
+          star: true,
+        },
+        orderBy: {
+          [validSortBy]: validSortOrder,
+        },
+        skip: offset,
+        take: limitNum,
+      });
+
+      const totalPages = Math.ceil(totalCount / limitNum);
+
+      res.json({
+        success: true,
+        users,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          limit: limitNum,
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+        },
+        currentUserRole: requesterRole,
+      });
+    } catch (error) {
+      console.error("Error searching users:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };
 
 module.exports = authController;

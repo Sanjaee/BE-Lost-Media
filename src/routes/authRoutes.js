@@ -398,6 +398,8 @@ router.post("/debug/fix-users", async (req, res) => {
 
 // Get all staff users (owner, admin, mod) - protected
 router.get("/staff/users", authMiddleware, authController.getAllStaffUsers);
+// Search all users with pagination and filtering - protected
+router.get("/search/users", authMiddleware, authController.searchAllUsers);
 // Update user role (protected)
 router.put("/staff/users/role", authMiddleware, authController.updateRole);
 // Update user star (protected)
