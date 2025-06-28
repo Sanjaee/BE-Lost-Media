@@ -101,4 +101,78 @@ module.exports = {
       res.status(500).json({ error: "Internal server error" });
     }
   },
+
+  // Update status isRead untuk notifikasi tertentu
+  markNotificationAsRead: async (req, res) => {
+    try {
+      const { notifId } = req.params;
+      const updatedNotification = await prisma.notification.update({
+        where: { notifId },
+        data: { isRead: true },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      res.json({
+        success: true,
+        message: "Notification marked as read",
+        notification: updatedNotification,
+      });
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Mark semua notifikasi user sebagai read
+  markAllUserNotificationsAsRead: async (req, res) => {
+    try {
+      const { userId } = req.params;
+      await prisma.notification.updateMany({
+        where: { userId, isRead: false },
+        data: { isRead: true },
+      });
+      res.json({
+        success: true,
+        message: "All notifications marked as read",
+      });
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Get count notifikasi yang belum dibaca untuk user tertentu
+  getUnreadNotificationCount: async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const count = await prisma.notification.count({
+        where: { userId, isRead: false },
+      });
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting unread notification count:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Get count notifikasi publik yang belum dibaca (untuk localStorage)
+  getUnreadPublicNotificationCount: async (req, res) => {
+    try {
+      const count = await prisma.notification.count({
+        where: { userId: null, isRead: false },
+      });
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting unread public notification count:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };
