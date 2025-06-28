@@ -373,10 +373,34 @@ const authController = {
       if (!allowedRoles.includes(role)) {
         return res.status(400).json({ error: "Invalid role" });
       }
-      const user = await prisma.user.findUnique({ where: { userId } });
-      if (!user) {
+
+      // Get current user data to check if role is being promoted
+      const currentUser = await prisma.user.findUnique({
+        where: { userId },
+        select: {
+          userId: true,
+          username: true,
+          role: true,
+        },
+      });
+
+      if (!currentUser) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      // Define role hierarchy for promotion detection
+      const roleHierarchy = {
+        member: 1,
+        vip: 2,
+        god: 3,
+        mod: 4,
+        admin: 5,
+        owner: 6,
+      };
+
+      const isPromotion = roleHierarchy[role] > roleHierarchy[currentUser.role];
+
+      // Update the user's role
       const updatedUser = await prisma.user.update({
         where: { userId },
         data: { role },
@@ -389,7 +413,39 @@ const authController = {
           createdAt: true,
         },
       });
-      res.json({ success: true, user: updatedUser });
+
+      // Send notification if role is being promoted
+      let notificationSent = false;
+      if (isPromotion) {
+        try {
+          const promoterUserId = req.user?.userId;
+          const promoterRole = req.user?.role || "owner";
+
+          await prisma.notification.create({
+            data: {
+              userId: userId,
+              actorId: promoterUserId,
+              type: "role_promoted",
+              content: `Selamat! Role Anda telah dinaikkan menjadi ${role} oleh ${promoterRole}.`,
+              actionUrl: `/profile/${userId}`,
+            },
+          });
+          notificationSent = true;
+        } catch (notificationError) {
+          console.error(
+            "Error creating role promotion notification:",
+            notificationError
+          );
+          // Don't fail the main operation if notification fails
+        }
+      }
+
+      res.json({
+        success: true,
+        user: updatedUser,
+        notificationSent,
+        isPromotion,
+      });
     } catch (error) {
       console.error("Error updating user role:", error);
       res.status(500).json({ error: "Internal server error" });
