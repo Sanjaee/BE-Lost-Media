@@ -2,6 +2,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const jwt = require("jsonwebtoken");
+const notificationController = require("./notificationController");
 
 const authController = {
   // Get current user profile
@@ -25,6 +26,7 @@ const authController = {
           followingCount: true,
           role: true,
           star: true,
+          isBanned: true,
           posts: true,
         },
       });
@@ -61,6 +63,7 @@ const authController = {
           followingCount: true,
           role: true,
           star: true,
+          isBanned: true,
           posts: {
             orderBy: { createdAt: "desc" },
             take: 10,
@@ -260,6 +263,7 @@ const authController = {
               orderBy: { createdAt: "desc" },
               take: 10,
             },
+            isBanned: true,
           },
         });
 
@@ -293,6 +297,7 @@ const authController = {
                   orderBy: { createdAt: "desc" },
                   take: 10,
                 },
+                isBanned: true,
               },
             });
 
@@ -575,9 +580,15 @@ const authController = {
 
       // Add role filter
       if (role && role.trim() && role !== "all") {
-        whereClause.AND.push({
-          role: role.trim(),
-        });
+        if (role === "banned") {
+          whereClause.AND.push({
+            isBanned: true,
+          });
+        } else {
+          whereClause.AND.push({
+            role: role.trim(),
+          });
+        }
       }
 
       // Remove empty AND array if no filters
@@ -614,6 +625,7 @@ const authController = {
           profilePic: true,
           createdAt: true,
           star: true,
+          isBanned: true,
         },
         orderBy: {
           [validSortBy]: validSortOrder,
@@ -640,6 +652,200 @@ const authController = {
     } catch (error) {
       console.error("Error searching users:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  // Ban user (only for owner, admin, mod)
+  banUser: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole = req.headers["x-user-role"] || req.user?.role;
+
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to ban users.",
+        });
+      }
+
+      const { userId, reason } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: "userId is required",
+        });
+      }
+
+      // Check if user exists and get current data
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: {
+          userId: true,
+          username: true,
+          role: true,
+          isBanned: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // Prevent banning users with higher or equal roles
+      const roleHierarchy = {
+        member: 1,
+        vip: 2,
+        god: 3,
+        mod: 4,
+        admin: 5,
+        owner: 6,
+      };
+
+      const requesterRoleLevel = roleHierarchy[requesterRole] || 0;
+      const targetRoleLevel = roleHierarchy[user.role] || 0;
+
+      if (targetRoleLevel >= requesterRoleLevel) {
+        return res.status(403).json({
+          success: false,
+          message: "You cannot ban users with equal or higher role than yours.",
+        });
+      }
+
+      if (user.isBanned) {
+        return res.status(400).json({
+          success: false,
+          message: "User is already banned",
+        });
+      }
+
+      // Ban the user and send notification in a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Update user to banned
+        const updatedUser = await tx.user.update({
+          where: { userId },
+          data: { isBanned: true },
+          select: {
+            userId: true,
+            username: true,
+            email: true,
+            role: true,
+            isBanned: true,
+            profilePic: true,
+            createdAt: true,
+          },
+        });
+
+        // Create notification for the banned user
+        const notification = await tx.notification.create({
+          data: {
+            userId: userId,
+            actorId: req.user.userId,
+            type: "account_banned",
+            content: `Akun Anda telah dibanned oleh ${requesterRole}${
+              reason ? ` karena: ${reason}` : ""
+            }.`,
+            actionUrl: `/profile/${userId}`,
+          },
+        });
+
+        return { updatedUser, notification };
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `User ${user.username} has been banned successfully`,
+        data: result.updatedUser,
+        notificationSent: true,
+        reason: reason || null,
+      });
+    } catch (error) {
+      console.error("Error banning user:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to ban user",
+        error: error.message,
+      });
+    }
+  },
+
+  // Unban user (only for owner, admin, mod)
+  unbanUser: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole = req.headers["x-user-role"] || req.user?.role;
+
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to unban users.",
+        });
+      }
+
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: "userId is required",
+        });
+      }
+
+      // Check if user exists and get current data
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: {
+          userId: true,
+          username: true,
+          role: true,
+          isBanned: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      if (!user.isBanned) {
+        return res.status(400).json({
+          success: false,
+          message: "User is not banned",
+        });
+      }
+
+      // Unban the user
+      const updatedUser = await prisma.user.update({
+        where: { userId },
+        data: { isBanned: false },
+        select: {
+          userId: true,
+          username: true,
+          email: true,
+          role: true,
+          isBanned: true,
+          profilePic: true,
+          createdAt: true,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `User ${user.username} has been unbanned successfully`,
+        data: updatedUser,
+      });
+    } catch (error) {
+      console.error("Error unbanning user:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to unban user",
+        error: error.message,
+      });
     }
   },
 };

@@ -316,6 +316,43 @@ module.exports = {
     }
   },
 
+  // Create notification for account ban
+  createAccountBanNotification: async (
+    userId,
+    username,
+    bannerUserId,
+    bannerRole,
+    reason = ""
+  ) => {
+    try {
+      const notification = await prisma.notification.create({
+        data: {
+          userId: userId,
+          actorId: bannerUserId,
+          type: "account_banned",
+          content: `Akun Anda telah dibanned oleh ${bannerRole}${
+            reason ? ` karena: ${reason}` : ""
+          }.`,
+          actionUrl: `/profile/${userId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating account ban notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
   // Get notifications by type for a specific user
   getUserNotificationsByType: async (req, res) => {
     try {

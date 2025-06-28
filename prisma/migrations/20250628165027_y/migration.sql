@@ -11,6 +11,7 @@ CREATE TABLE "users" (
     "followingCount" INTEGER NOT NULL DEFAULT 0,
     "role" TEXT NOT NULL DEFAULT 'member',
     "star" INTEGER NOT NULL DEFAULT 0,
+    "isBanned" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("userId")
 );

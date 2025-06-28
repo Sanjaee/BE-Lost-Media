@@ -236,6 +236,39 @@ router.get("/profile", isAuthenticated, authController.getProfile);
 router.get("/profile/:userId", authController.getProfileById);
 router.put("/profile", authMiddleware, authController.updateProfile);
 
+// JWT-based profile endpoint for frontend
+router.get("/profile-jwt", authMiddleware, authController.getProfile);
+
+// Test endpoint to check user ban status
+router.get("/test-ban-status", authMiddleware, async (req, res) => {
+  try {
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+    const user = await prisma.user.findUnique({
+      where: { userId: req.user.userId },
+      select: {
+        userId: true,
+        username: true,
+        isBanned: true,
+        role: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      user,
+      debug: {
+        hasUserId: !!req.user.userId,
+        userRole: req.user.role,
+        isBanned: user?.isBanned,
+      },
+    });
+  } catch (error) {
+    console.error("Test ban status error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // Token routes for NextAuth integration
 router.get("/token", isAuthenticated, authController.generateToken);
 router.post("/verify-token", authController.verifyToken);
@@ -410,5 +443,10 @@ router.get(
   authMiddleware,
   authController.getStarById
 );
+
+// Ban user (protected)
+router.post("/staff/users/ban", authMiddleware, authController.banUser);
+// Unban user (protected)
+router.post("/staff/users/unban", authMiddleware, authController.unbanUser);
 
 module.exports = router;
