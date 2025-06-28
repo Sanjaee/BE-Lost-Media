@@ -38,9 +38,12 @@ router.use(authMiddleware);
 
 router.get("/manage/unpublished", postController.getUnpublishedPosts);
 router.get("/manage/search", postController.searchUnpublishedPosts);
+router.get("/manage/published", postController.getPublishedPosts);
+router.get("/manage/published/search", postController.searchPublishedPosts);
 router.post("/", postController.createPost);
 router.put("/:postId", postController.updatePost);
 router.delete("/:postId", postController.deletePost);
+router.delete("/manage/published/:postId", postController.deletePublishedPost);
 router.get("/user/my-posts", postController.getUserPosts);
 router.post("/:postId/like", postController.toggleLike);
 router.post("/:postId/comment", postController.createComment);

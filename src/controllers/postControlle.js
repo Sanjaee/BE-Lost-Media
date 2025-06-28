@@ -1141,6 +1141,268 @@ const postController = {
       });
     }
   },
+
+  // Get all published posts (only for certain roles)
+  getPublishedPosts: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+
+      const currentUserId = req.user?.userId;
+
+      const posts = await prisma.post.findMany({
+        where: {
+          isPublished: true,
+          isDeleted: false,
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          sections: {
+            orderBy: { order: "asc" },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: transformedPosts,
+        count: transformedPosts.length,
+      });
+    } catch (error) {
+      console.error("Error fetching published posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch published posts",
+      });
+    }
+  },
+
+  // Search published posts (only for certain roles)
+  searchPublishedPosts: async (req, res) => {
+    try {
+      const allowedRoles = ["owner", "admin", "mod"];
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (!allowedRoles.includes(requesterRole)) {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only staff can access this endpoint" });
+      }
+
+      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const skip = (page - 1) * limit;
+      const currentUserId = req.user?.userId;
+
+      // Build search conditions
+      const whereConditions = {
+        isPublished: true,
+        isDeleted: false,
+      };
+
+      // Search in title, description, and content
+      if (q && q.trim() !== "") {
+        const searchTerm = q.trim();
+        whereConditions.OR = [
+          {
+            title: {
+              contains: searchTerm,
+              mode: "insensitive", // Case insensitive search
+            },
+          },
+          {
+            description: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+          {
+            content: {
+              contains: searchTerm,
+              mode: "insensitive",
+            },
+          },
+        ];
+      }
+
+      // Filter by category
+      if (category && category.trim() !== "") {
+        whereConditions.category = {
+          contains: category.trim(),
+          mode: "insensitive",
+        };
+      }
+
+      // Filter by author
+      if (author && author.trim() !== "") {
+        whereConditions.author = {
+          username: {
+            contains: author.trim(),
+            mode: "insensitive",
+          },
+        };
+      }
+
+      const posts = await prisma.post.findMany({
+        where: whereConditions,
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          sections: {
+            orderBy: { order: "asc" },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+      });
+
+      // Get total count for pagination
+      const totalPosts = await prisma.post.count({
+        where: whereConditions,
+      });
+
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: transformedPosts,
+        count: transformedPosts.length,
+        totalCount: totalPosts,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPosts / limit),
+          totalItems: totalPosts,
+          itemsPerPage: parseInt(limit),
+        },
+        searchParams: {
+          query: q || "",
+          category: category || "",
+          author: author || "",
+        },
+      });
+    } catch (error) {
+      console.error("Error searching published posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to search published posts",
+        error: error.message,
+      });
+    }
+  },
+
+  // Delete published post (only for certain roles)
+  deletePublishedPost: async (req, res) => {
+    try {
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to delete published posts.",
+        });
+      }
+
+      const { postId } = req.params;
+      if (!postId) {
+        return res.status(400).json({
+          success: false,
+          message: "postId is required",
+        });
+      }
+
+      // Check if post exists and is published
+      const post = await prisma.post.findFirst({
+        where: {
+          postId,
+          isPublished: true,
+          isDeleted: false,
+        },
+      });
+
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          message: "Published post not found",
+        });
+      }
+
+      // Delete related data first
+      await prisma.contentSection.deleteMany({ where: { postId } });
+      await prisma.comment.deleteMany({ where: { postId } });
+      await prisma.like.deleteMany({ where: { postId } });
+      await prisma.post.delete({ where: { postId } });
+
+      res.status(200).json({
+        success: true,
+        message: "Published post has been deleted successfully.",
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete published post",
+        error: error.message,
+      });
+    }
+  },
 };
 
 module.exports = postController;
