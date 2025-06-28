@@ -175,4 +175,64 @@ module.exports = {
       res.status(500).json({ error: "Internal server error" });
     }
   },
+
+  // Create notification for post approval
+  createPostApprovalNotification: async (
+    postId,
+    postTitle,
+    authorUserId,
+    approverUserId,
+    approverRole
+  ) => {
+    try {
+      const notification = await prisma.notification.create({
+        data: {
+          userId: authorUserId,
+          actorId: approverUserId,
+          type: "post_approved",
+          content: `Post "${postTitle}" telah disetujui dan dipublikasikan oleh ${approverRole}.`,
+          actionUrl: `/post/${postId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating post approval notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get notifications by type for a specific user
+  getUserNotificationsByType: async (req, res) => {
+    try {
+      const { userId, type } = req.params;
+      const notifications = await prisma.notification.findMany({
+        where: { userId, type },
+        orderBy: { createdAt: "desc" },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      res.json({ notifications });
+    } catch (error) {
+      console.error("Error getting user notifications by type:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };

@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const notificationController = require("./notificationController");
 
 const postController = {
   // Get all posts with ordered content sections
@@ -859,6 +860,14 @@ const postController = {
       // Check if post exists
       const post = await prisma.post.findFirst({
         where: { postId, isDeleted: false },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
       });
       if (!post) {
         return res.status(404).json({
@@ -867,16 +876,37 @@ const postController = {
         });
       }
 
+      // Check if post was previously unpublished and is now being published
+      const wasUnpublished = !post.isPublished;
+      const isBeingPublished = !!isPublished;
+
       // Update publish status
       const updated = await prisma.post.update({
         where: { postId },
-        data: { isPublished: !!isPublished },
+        data: { isPublished: isBeingPublished },
       });
+
+      // Send notification if post is being published for the first time
+      if (wasUnpublished && isBeingPublished) {
+        try {
+          await notificationController.createPostApprovalNotification(
+            postId,
+            post.title,
+            post.author.userId,
+            req.user.userId,
+            requesterRole
+          );
+        } catch (notificationError) {
+          console.error("Error creating notification:", notificationError);
+          // Don't fail the main operation if notification fails
+        }
+      }
 
       res.status(200).json({
         success: true,
         message: `Post has been ${isPublished ? "published" : "unpublished"}`,
         data: updated,
+        notificationSent: wasUnpublished && isBeingPublished,
       });
     } catch (error) {
       res.status(500).json({
@@ -1399,6 +1429,100 @@ const postController = {
       res.status(500).json({
         success: false,
         message: "Failed to delete published post",
+        error: error.message,
+      });
+    }
+  },
+
+  // Bulk approve posts (only for certain roles)
+  bulkApprovePosts: async (req, res) => {
+    try {
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to bulk approve posts.",
+        });
+      }
+
+      const { postIds } = req.body;
+      if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "postIds array is required and must not be empty",
+        });
+      }
+
+      // Get all unpublished posts that match the provided IDs
+      const posts = await prisma.post.findMany({
+        where: {
+          postId: { in: postIds },
+          isPublished: false,
+          isDeleted: false,
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      if (posts.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No unpublished posts found with the provided IDs",
+        });
+      }
+
+      const results = await prisma.$transaction(async (tx) => {
+        const approvedPosts = [];
+        const notifications = [];
+
+        for (const post of posts) {
+          // Update post to published
+          const updatedPost = await tx.post.update({
+            where: { postId: post.postId },
+            data: { isPublished: true },
+          });
+
+          approvedPosts.push(updatedPost);
+
+          // Create notification for the author
+          const notification = await tx.notification.create({
+            data: {
+              userId: post.author.userId,
+              actorId: req.user.userId,
+              type: "post_approved",
+              content: `Post "${post.title}" telah disetujui dan dipublikasikan oleh ${requesterRole}.`,
+              actionUrl: `/post/${post.postId}`,
+            },
+          });
+
+          notifications.push(notification);
+        }
+
+        return { approvedPosts, notifications };
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `${results.approvedPosts.length} posts have been approved and published`,
+        data: {
+          approvedCount: results.approvedPosts.length,
+          notificationCount: results.notifications.length,
+          postIds: results.approvedPosts.map((post) => post.postId),
+        },
+      });
+    } catch (error) {
+      console.error("Error bulk approving posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to bulk approve posts",
         error: error.message,
       });
     }

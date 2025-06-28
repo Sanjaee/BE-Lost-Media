@@ -35,4 +35,10 @@ router.get(
   notificationController.getUnreadNotificationCount
 );
 
+// Get notifications by type for a specific user
+router.get(
+  "/user/:userId/type/:type",
+  notificationController.getUserNotificationsByType
+);
+
 module.exports = router;
