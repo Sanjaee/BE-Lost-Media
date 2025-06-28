@@ -52,5 +52,6 @@ router.post("/manage/:postId/publish", postController.setPublishStatus);
 router.post("/manage/:postId/force-delete", postController.forceDeletePostById);
 router.post("/manage/bulk-approve", postController.bulkApprovePosts);
 router.post("/manage/bulk-delete", postController.bulkDeletePublishedPosts);
+router.post("/manage/bulk-force-delete", postController.bulkForceDeletePosts);
 
 module.exports = router;

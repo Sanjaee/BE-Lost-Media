@@ -1144,8 +1144,18 @@ const postController = {
         });
       }
 
-      // Check if post exists
-      const post = await prisma.post.findUnique({ where: { postId } });
+      // Check if post exists and get author information
+      const post = await prisma.post.findUnique({
+        where: { postId },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
+      });
       if (!post) {
         return res.status(404).json({
           success: false,
@@ -1153,15 +1163,33 @@ const postController = {
         });
       }
 
-      // Delete related data first
-      await prisma.contentSection.deleteMany({ where: { postId } });
-      await prisma.comment.deleteMany({ where: { postId } });
-      await prisma.like.deleteMany({ where: { postId } });
-      await prisma.post.delete({ where: { postId } });
+      // Delete related data and send notification in a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Delete related data first
+        await tx.contentSection.deleteMany({ where: { postId } });
+        await tx.comment.deleteMany({ where: { postId } });
+        await tx.like.deleteMany({ where: { postId } });
+        await tx.post.delete({ where: { postId } });
+
+        // Create notification for the author
+        const notification = await tx.notification.create({
+          data: {
+            userId: post.author.userId,
+            actorId: req.user.userId,
+            type: "post_force_deleted",
+            content: `Post "${post.title}" telah dihapus paksa oleh ${requesterRole} karena tidak memenuhi standar.`,
+            actionUrl: `/profile/${post.author.userId}`,
+          },
+        });
+
+        return { notification };
+      });
 
       res.status(200).json({
         success: true,
         message: "Post and related data have been force deleted.",
+        notificationSent: true,
+        data: result,
       });
     } catch (error) {
       res.status(500).json({
@@ -1645,6 +1673,101 @@ const postController = {
       res.status(500).json({
         success: false,
         message: "Failed to bulk delete posts",
+        error: error.message,
+      });
+    }
+  },
+
+  // Bulk force delete posts (only for certain roles)
+  bulkForceDeletePosts: async (req, res) => {
+    try {
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      const allowedRoles = ["owner", "admin", "mod"];
+      if (!allowedRoles.includes(requesterRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to bulk force delete posts.",
+        });
+      }
+
+      const { postIds } = req.body;
+      if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "postIds array is required and must not be empty",
+        });
+      }
+
+      // Get all posts that match the provided IDs
+      const posts = await prisma.post.findMany({
+        where: {
+          postId: { in: postIds },
+          isDeleted: false,
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      if (posts.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No posts found with the provided IDs",
+        });
+      }
+
+      const results = await prisma.$transaction(async (tx) => {
+        const forceDeletedPosts = [];
+        const notifications = [];
+
+        for (const post of posts) {
+          // Delete related data first
+          await tx.contentSection.deleteMany({
+            where: { postId: post.postId },
+          });
+          await tx.comment.deleteMany({ where: { postId: post.postId } });
+          await tx.like.deleteMany({ where: { postId: post.postId } });
+          await tx.post.delete({ where: { postId: post.postId } });
+
+          forceDeletedPosts.push(post);
+
+          // Create notification for the author
+          const notification = await tx.notification.create({
+            data: {
+              userId: post.author.userId,
+              actorId: req.user.userId,
+              type: "post_force_deleted",
+              content: `Post "${post.title}" telah dihapus paksa oleh ${requesterRole} karena tidak memenuhi standar.`,
+              actionUrl: `/profile/${post.author.userId}`,
+            },
+          });
+
+          notifications.push(notification);
+        }
+
+        return { forceDeletedPosts, notifications };
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `${results.forceDeletedPosts.length} posts have been force deleted`,
+        data: {
+          forceDeletedCount: results.forceDeletedPosts.length,
+          notificationCount: results.notifications.length,
+          postIds: results.forceDeletedPosts.map((post) => post.postId),
+        },
+      });
+    } catch (error) {
+      console.error("Error bulk force deleting posts:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to bulk force delete posts",
         error: error.message,
       });
     }
