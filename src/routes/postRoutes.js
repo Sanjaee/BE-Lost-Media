@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const postController = require("../controllers/postControlle");
+const commentRoutes = require("./commentRoutes");
 const authMiddleware = require("../middleware/authMiddleware");
 
 // Optional authentication middleware
@@ -29,8 +30,10 @@ const optionalAuth = (req, res, next) => {
 router.get("/", optionalAuth, postController.getAllPosts);
 router.get("/search", optionalAuth, postController.searchAllPosts);
 router.get("/:postId", postController.getPostById);
-router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/view", postController.incrementViewCount);
+
+// Comment routes
+router.use("/", commentRoutes);
 
 // Protected routes (authentication required)
 // Apply auth middleware to all routes below
@@ -46,8 +49,6 @@ router.delete("/:postId", postController.deletePost);
 router.delete("/manage/published/:postId", postController.deletePublishedPost);
 router.get("/user/my-posts", postController.getUserPosts);
 router.post("/:postId/like", postController.toggleLike);
-router.post("/:postId/comment", postController.createComment);
-router.post("/:postId/comments/:commentId/reply", postController.replyComment);
 router.post("/manage/:postId/publish", postController.setPublishStatus);
 router.post("/manage/:postId/force-delete", postController.forceDeletePostById);
 router.post("/manage/bulk-approve", postController.bulkApprovePosts);
