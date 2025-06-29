@@ -1,4 +1,5 @@
 const prisma = require("../utils/prisma");
+const notificationController = require("./notificationController");
 
 const commentController = {
   // Create comment on post
@@ -45,6 +46,17 @@ const commentController = {
         });
         return newComment;
       });
+
+      // Setelah comment berhasil dibuat:
+      if (post.userId && post.userId !== userId) {
+        await notificationController.createCommentNotification(
+          postId,
+          post.title,
+          post.userId,
+          userId,
+          req.user.username
+        );
+      }
 
       res
         .status(201)

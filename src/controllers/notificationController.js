@@ -190,7 +190,7 @@ module.exports = {
           actorId: approverUserId,
           type: "post_approved",
           content: `Post "${postTitle}" telah disetujui dan dipublikasikan oleh ${approverRole}.`,
-          actionUrl: `/post/${postId}`,
+          actionUrl: `/share/${postId}`,
         },
         include: {
           actor: {
@@ -374,6 +374,42 @@ module.exports = {
     } catch (error) {
       console.error("Error getting user notifications by type:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  },
+
+  createCommentNotification: async (
+    postId,
+    postTitle,
+    postOwnerId,
+    commenterId,
+    commenterUsername
+  ) => {
+    try {
+      if (postOwnerId === commenterId)
+        return { success: false, message: "No self notification" };
+      const notification = await prisma.notification.create({
+        data: {
+          userId: postOwnerId,
+          actorId: commenterId,
+          type: "comment",
+          content: `@${commenterUsername} mengomentari postingan Anda: "${postTitle}"`,
+          actionUrl: `/share/${postId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating comment notification:", error);
+      return { success: false, error: error.message };
     }
   },
 };
