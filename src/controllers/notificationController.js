@@ -412,4 +412,40 @@ module.exports = {
       return { success: false, error: error.message };
     }
   },
+
+  createReplyNotification: async (
+    postId,
+    postTitle,
+    parentCommentAuthorId,
+    replierId,
+    replierUsername
+  ) => {
+    try {
+      if (parentCommentAuthorId === replierId)
+        return { success: false, message: "No self notification" };
+      const notification = await prisma.notification.create({
+        data: {
+          userId: parentCommentAuthorId,
+          actorId: replierId,
+          type: "reply",
+          content: `@${replierUsername} membalas komentar Anda di postingan: "${postTitle}"`,
+          actionUrl: `/share/${postId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating reply notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
 };

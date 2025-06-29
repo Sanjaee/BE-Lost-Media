@@ -129,6 +129,12 @@ const commentController = {
           .json({ success: false, message: "Parent comment not found" });
       }
 
+      // Get post information for notification
+      const post = await prisma.post.findFirst({
+        where: { postId, isDeleted: false },
+        select: { title: true },
+      });
+
       // Add @username to the beginning of the reply content if it doesn't already start with it
       let replyContent = content.trim();
       const mentionedUsername = `@${parentComment.author.username}`;
@@ -160,6 +166,20 @@ const commentController = {
         });
         return newReply;
       });
+
+      // Send notification to parent comment author
+      if (
+        parentComment.author.userId &&
+        parentComment.author.userId !== userId
+      ) {
+        await notificationController.createReplyNotification(
+          postId,
+          post?.title || "Untitled Post",
+          parentComment.author.userId,
+          userId,
+          req.user.username
+        );
+      }
 
       res
         .status(201)
