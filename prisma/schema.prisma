@@ -25,6 +25,8 @@ model User {
   role           String      @default("member")
   star           Int         @default(0)
   isBanned       Boolean     @default(false)
+  banReason      String?
+  bannedBy       String?
 
   posts            Post[]
   comments         Comment[]
@@ -37,6 +39,10 @@ model User {
 
   notifications      Notification[] @relation("UserNotifications")
   actedNotifications Notification[] @relation("ActorNotifications")
+
+  // Relations for ban functionality
+  bannedUsers User[] @relation("BannedBy")
+  bannedByUser User? @relation("BannedBy", fields: [bannedBy], references: [userId])
 
   @@map("users")
 }

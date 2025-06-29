@@ -27,6 +27,7 @@ const authController = {
           role: true,
           star: true,
           isBanned: true,
+          banReason: true,
           posts: true,
         },
       });
@@ -64,6 +65,7 @@ const authController = {
           role: true,
           star: true,
           isBanned: true,
+          banReason: true,
           posts: {
             orderBy: { createdAt: "desc" },
             take: 10,
@@ -626,6 +628,8 @@ const authController = {
           createdAt: true,
           star: true,
           isBanned: true,
+          banReason: true,
+          bannedBy: true,
         },
         orderBy: {
           [validSortBy]: validSortOrder,
@@ -727,13 +731,19 @@ const authController = {
         // Update user to banned
         const updatedUser = await tx.user.update({
           where: { userId },
-          data: { isBanned: true },
+          data: {
+            isBanned: true,
+            banReason: reason || null,
+            bannedBy: req.user.userId,
+          },
           select: {
             userId: true,
             username: true,
             email: true,
             role: true,
             isBanned: true,
+            banReason: true,
+            bannedBy: true,
             profilePic: true,
             createdAt: true,
           },
@@ -822,13 +832,19 @@ const authController = {
       // Unban the user
       const updatedUser = await prisma.user.update({
         where: { userId },
-        data: { isBanned: false },
+        data: {
+          isBanned: false,
+          banReason: null,
+          bannedBy: null,
+        },
         select: {
           userId: true,
           username: true,
           email: true,
           role: true,
           isBanned: true,
+          banReason: true,
+          bannedBy: true,
           profilePic: true,
           createdAt: true,
         },
