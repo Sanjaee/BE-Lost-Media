@@ -34,6 +34,10 @@ const postController = {
               order: "asc",
             },
           },
+          comments: {
+            where: { isDeleted: false },
+            select: { commentId: true },
+          },
           ...(currentUserId && {
             likes: {
               where: {

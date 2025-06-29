@@ -15,4 +15,11 @@ router.post(
   commentController.replyComment
 );
 
+// Route untuk hapus komentar
+router.delete(
+  "/:postId/comments/:commentId",
+  authMiddleware,
+  commentController.deleteComment
+);
+
 module.exports = router;

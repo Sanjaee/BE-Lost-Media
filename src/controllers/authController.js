@@ -68,12 +68,6 @@ const authController = {
           posts: {
             orderBy: { createdAt: "desc" },
             take: 10,
-            select: {
-              postId: true,
-              title: true,
-              createdAt: true,
-              commentsCount: true,
-            },
           },
         },
       });

@@ -43,10 +43,6 @@ const commentController = {
             },
           },
         });
-        await tx.post.update({
-          where: { postId },
-          data: { commentsCount: { increment: 1 } },
-        });
         return newComment;
       });
 
@@ -103,14 +99,31 @@ const commentController = {
           .json({ success: false, message: "Content is required" });
       }
 
-      // Check if parent comment exists
+      // Check if parent comment exists and get its author
       const parentComment = await prisma.comment.findFirst({
         where: { commentId, postId, isDeleted: false },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
       });
       if (!parentComment) {
         return res
           .status(404)
           .json({ success: false, message: "Parent comment not found" });
+      }
+
+      // Add @username to the beginning of the reply content if it doesn't already start with it
+      let replyContent = content.trim();
+      const mentionedUsername = `@${parentComment.author.username}`;
+
+      // Check if the content already starts with @username
+      if (!replyContent.startsWith(mentionedUsername)) {
+        replyContent = `${mentionedUsername} ${replyContent}`;
       }
 
       // Create reply and increment commentsCount on post
@@ -119,7 +132,7 @@ const commentController = {
           data: {
             postId,
             userId,
-            content,
+            content: replyContent,
             parentId: commentId,
           },
           include: {
@@ -133,10 +146,6 @@ const commentController = {
             },
           },
         });
-        await tx.post.update({
-          where: { postId },
-          data: { commentsCount: { increment: 1 } },
-        });
         return newReply;
       });
 
@@ -147,6 +156,40 @@ const commentController = {
       res.status(500).json({
         success: false,
         message: "Failed to create reply",
+        error: error.message,
+      });
+    }
+  },
+
+  // Delete comment (soft delete)
+  deleteComment: async (req, res) => {
+    try {
+      const { postId, commentId } = req.params;
+      const { userId } = req.user;
+
+      // Cek apakah komentar ada dan milik user
+      const comment = await prisma.comment.findFirst({
+        where: { commentId, postId, isDeleted: false, userId },
+      });
+      if (!comment) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Comment not found" });
+      }
+
+      // Soft delete comment
+      await prisma.$transaction(async (tx) => {
+        await tx.comment.update({
+          where: { commentId },
+          data: { isDeleted: true },
+        });
+      });
+
+      res.status(200).json({ success: true, message: "Comment deleted" });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete comment",
         error: error.message,
       });
     }

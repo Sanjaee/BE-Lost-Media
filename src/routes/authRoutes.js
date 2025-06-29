@@ -5,6 +5,7 @@ const authController = require("../controllers/authController");
 const authMiddleware = require("../middleware/authMiddleware");
 const notificationController = require("../controllers/notificationController");
 const router = express.Router();
+const prisma = require("../utils/prisma");
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req, res, next) => {
@@ -26,9 +27,6 @@ router.post("/signin-google", async (req, res) => {
     if (!googleId || !email) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
 
     // Check if user already exists with this Google ID
     let existingUser = await prisma.user.findUnique({
@@ -242,8 +240,6 @@ router.get("/profile-jwt", authMiddleware, authController.getProfile);
 // Test endpoint to check user ban status
 router.get("/test-ban-status", authMiddleware, async (req, res) => {
   try {
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
     const user = await prisma.user.findUnique({
       where: { userId: req.user.userId },
       select: {
@@ -297,8 +293,6 @@ router.get("/status", (req, res) => {
 router.get("/debug/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
 
     const user = await prisma.user.findUnique({
       where: { userId },
@@ -344,9 +338,6 @@ router.get("/debug/user/:userId", async (req, res) => {
 // Debug endpoint to check all users and their roles
 router.get("/debug/users", async (req, res) => {
   try {
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
-
     const users = await prisma.user.findMany({
       select: {
         userId: true,
@@ -383,9 +374,6 @@ router.get("/debug/users", async (req, res) => {
 // Fix users with missing role or star
 router.post("/debug/fix-users", async (req, res) => {
   try {
-    const { PrismaClient } = require("@prisma/client");
-    const prisma = new PrismaClient();
-
     // Find users with missing role or star
     const usersToFix = await prisma.user.findMany({
       where: {

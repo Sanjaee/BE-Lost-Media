@@ -1,10 +1,8 @@
 // config/passport.js
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../utils/prisma");
 const { v4: uuidv4 } = require("uuid");
-
-const prisma = new PrismaClient();
 
 passport.use(
   new GoogleStrategy(

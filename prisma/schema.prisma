@@ -57,7 +57,6 @@ model Post {
   mediaUrl      String?
   viewsCount    Int       @default(0)
   likesCount    Int       @default(0)
-  commentsCount Int       @default(0)
   sharesCount   Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
