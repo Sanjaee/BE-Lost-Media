@@ -299,6 +299,32 @@ const postController = {
       const { title, description, category, mediaUrl, sections } = req.body;
       const { userId } = req.user;
 
+      // Ambil data user untuk cek role dan postsCount
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: { role: true, postsCount: true },
+      });
+      if (!user) {
+        return res.status(403).json({
+          success: false,
+          message: "User not found.",
+        });
+      }
+      // Batasan jumlah post berdasarkan role
+      const roleLimit = {
+        member: 1,
+        vip: 5,
+        god: 20,
+      };
+      if (user.role in roleLimit && user.postsCount >= roleLimit[user.role]) {
+        return res.status(403).json({
+          success: false,
+          message: `Role ${user.role} hanya dapat membuat maksimal ${
+            roleLimit[user.role]
+          } post.`,
+        });
+      }
+
       // Validate required fields
       if (!title || !description || !category) {
         return res.status(400).json({
@@ -351,6 +377,12 @@ const postController = {
             mediaUrl: mediaUrl || null,
             content: generatedContent, // Use generated content
           },
+        });
+
+        // Increment postsCount user jika post berhasil dibuat
+        await tx.user.update({
+          where: { userId },
+          data: { postsCount: { increment: 1 } },
         });
 
         // Create content sections if provided
@@ -1620,6 +1652,34 @@ const postController = {
       res.status(500).json({
         success: false,
         message: "Failed to bulk force delete posts",
+        error: error.message,
+      });
+    }
+  },
+
+  // Endpoint untuk mengambil postsCount dan role user yang sedang login
+  getUserPostsCount: async (req, res) => {
+    try {
+      const { userId } = req.user;
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: { postsCount: true, role: true },
+      });
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+      res.status(200).json({
+        success: true,
+        postsCount: user.postsCount,
+        role: user.role,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch posts count",
         error: error.message,
       });
     }

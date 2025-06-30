@@ -27,6 +27,7 @@ model User {
   isBanned       Boolean     @default(false)
   banReason      String?
   bannedBy       String?
+  postsCount     Int         @default(0)
 
   posts            Post[]
   comments         Comment[]

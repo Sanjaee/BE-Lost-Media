@@ -48,6 +48,7 @@ router.put("/:postId", postController.updatePost);
 router.delete("/:postId", postController.deletePost);
 router.delete("/manage/published/:postId", postController.deletePublishedPost);
 router.get("/user/my-posts", postController.getUserPosts);
+router.get("/user/posts-count", postController.getUserPostsCount);
 router.post("/:postId/like", postController.toggleLike);
 router.post("/manage/:postId/publish", postController.setPublishStatus);
 router.post("/manage/:postId/force-delete", postController.forceDeletePostById);
