@@ -10,7 +10,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("postgresql://postgres:123@localhost:5432/lostmedia")
 }
 model User {
   userId         String      @id @default(uuid())
