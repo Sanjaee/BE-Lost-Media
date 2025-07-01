@@ -1,10 +1,7 @@
 # Dockerfile
-FROM node:18-alpine
+FROM node:18
 
 WORKDIR /app
-
-# Install OpenSSL 1.1 compatibility for Prisma
-RUN apk add --no-cache openssl1.1-compat
 
 COPY . .
 
