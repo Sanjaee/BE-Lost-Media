@@ -3,11 +3,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
-
-# Copy seluruh source code termasuk folder prisma
 COPY . .
+
+RUN npm install
 
 RUN npx prisma generate --schema=prisma/schema.prisma
 
