@@ -652,10 +652,10 @@ const authController = {
     }
   },
 
-  // Ban user (only for owner, admin, mod)
+  // Ban user (only for owner)
   banUser: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner"];
       const requesterRole = req.headers["x-user-role"] || req.user?.role;
 
       if (!allowedRoles.includes(requesterRole)) {
@@ -705,10 +705,11 @@ const authController = {
       const requesterRoleLevel = roleHierarchy[requesterRole] || 0;
       const targetRoleLevel = roleHierarchy[user.role] || 0;
 
-      if (targetRoleLevel >= requesterRoleLevel) {
+      // Only allow owner to ban, and owner cannot ban another owner
+      if (user.role === "owner") {
         return res.status(403).json({
           success: false,
-          message: "You cannot ban users with equal or higher role than yours.",
+          message: "You cannot ban another owner.",
         });
       }
 
