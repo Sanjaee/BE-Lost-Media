@@ -3,6 +3,7 @@ const router = express.Router();
 const postController = require("../controllers/postControlle");
 const commentRoutes = require("./commentRoutes");
 const authMiddleware = require("../middleware/authMiddleware");
+const { createPostRateLimiter } = require("../middleware/rateLimitMiddleware");
 
 // Optional authentication middleware
 const optionalAuth = (req, res, next) => {
@@ -43,7 +44,7 @@ router.get("/manage/unpublished", postController.getUnpublishedPosts);
 router.get("/manage/search", postController.searchUnpublishedPosts);
 router.get("/manage/published", postController.getPublishedPosts);
 router.get("/manage/published/search", postController.searchPublishedPosts);
-router.post("/", postController.createPost);
+router.post("/", createPostRateLimiter, postController.createPost);
 router.put("/:postId", postController.updatePost);
 router.delete("/:postId", postController.deletePost);
 router.delete("/manage/published/:postId", postController.deletePublishedPost);
