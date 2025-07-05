@@ -316,7 +316,12 @@ const postController = {
         vip: 5,
         god: 20,
       };
-      if (user.role in roleLimit && user.postsCount >= roleLimit[user.role]) {
+      const privilegedRoles = ["owner", "admin", "mod"];
+      if (
+        !privilegedRoles.includes(user.role) &&
+        user.role in roleLimit &&
+        user.postsCount >= roleLimit[user.role]
+      ) {
         return res.status(403).json({
           success: false,
           message: `Role ${user.role} hanya dapat membuat maksimal ${
@@ -379,11 +384,13 @@ const postController = {
           },
         });
 
-        // Increment postsCount user jika post berhasil dibuat
-        await tx.user.update({
-          where: { userId },
-          data: { postsCount: { increment: 1 } },
-        });
+        // Increment postsCount user jika post berhasil dibuat DAN bukan privileged role
+        if (!privilegedRoles.includes(user.role)) {
+          await tx.user.update({
+            where: { userId },
+            data: { postsCount: { increment: 1 } },
+          });
+        }
 
         // Create content sections if provided
         if (sections && sections.length > 0) {
@@ -1055,6 +1062,19 @@ const postController = {
         await tx.like.deleteMany({ where: { postId } });
         await tx.post.delete({ where: { postId } });
 
+        // Decrement postsCount user jika post berhasil dihapus
+        const currentUser = await tx.user.findUnique({
+          where: { userId: post.author.userId },
+          select: { postsCount: true }
+        });
+        
+        await tx.user.update({
+          where: { userId: post.author.userId },
+          data: { 
+            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1)
+          },
+        });
+
         // Create notification for the author
         const notification = await tx.notification.create({
           data: {
@@ -1343,6 +1363,19 @@ const postController = {
         await tx.like.deleteMany({ where: { postId } });
         await tx.post.delete({ where: { postId } });
 
+        // Decrement postsCount user jika post berhasil dihapus
+        const currentUser = await tx.user.findUnique({
+          where: { userId: post.author.userId },
+          select: { postsCount: true }
+        });
+        
+        await tx.user.update({
+          where: { userId: post.author.userId },
+          data: { 
+            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1)
+          },
+        });
+
         // Create notification for the author
         const notification = await tx.notification.create({
           data: {
@@ -1515,6 +1548,15 @@ const postController = {
         const deletedPosts = [];
         const notifications = [];
 
+        // Group posts by author to avoid duplicate decrements
+        const postsByAuthor = {};
+        posts.forEach((post) => {
+          if (!postsByAuthor[post.author.userId]) {
+            postsByAuthor[post.author.userId] = [];
+          }
+          postsByAuthor[post.author.userId].push(post);
+        });
+
         for (const post of posts) {
           // Delete related data first
           await tx.contentSection.deleteMany({
@@ -1525,6 +1567,28 @@ const postController = {
           await tx.post.delete({ where: { postId: post.postId } });
 
           deletedPosts.push(post);
+
+          // Decrement postsCount for each author (only once per author)
+          for (const [authorId, authorPosts] of Object.entries(postsByAuthor)) {
+            await tx.user.update({
+              where: { userId: authorId },
+              data: {
+                postsCount: {
+                  decrement: authorPosts.length,
+                  // Ensure postsCount doesn't go below 0
+                  set: Math.max(
+                    0,
+                    (
+                      await tx.user.findUnique({
+                        where: { userId: authorId },
+                        select: { postsCount: true },
+                      })
+                    ).postsCount - authorPosts.length
+                  ),
+                },
+              },
+            });
+          }
 
           // Create notification for the author
           const notification = await tx.notification.create({
@@ -1610,6 +1674,15 @@ const postController = {
         const forceDeletedPosts = [];
         const notifications = [];
 
+        // Group posts by author to avoid duplicate decrements
+        const postsByAuthor = {};
+        posts.forEach((post) => {
+          if (!postsByAuthor[post.author.userId]) {
+            postsByAuthor[post.author.userId] = [];
+          }
+          postsByAuthor[post.author.userId].push(post);
+        });
+
         for (const post of posts) {
           // Delete related data first
           await tx.contentSection.deleteMany({
@@ -1620,6 +1693,28 @@ const postController = {
           await tx.post.delete({ where: { postId: post.postId } });
 
           forceDeletedPosts.push(post);
+
+          // Decrement postsCount for each author (only once per author)
+          for (const [authorId, authorPosts] of Object.entries(postsByAuthor)) {
+            await tx.user.update({
+              where: { userId: authorId },
+              data: {
+                postsCount: {
+                  decrement: authorPosts.length,
+                  // Ensure postsCount doesn't go below 0
+                  set: Math.max(
+                    0,
+                    (
+                      await tx.user.findUnique({
+                        where: { userId: authorId },
+                        select: { postsCount: true },
+                      })
+                    ).postsCount - authorPosts.length
+                  ),
+                },
+              },
+            });
+          }
 
           // Create notification for the author
           const notification = await tx.notification.create({
