@@ -567,6 +567,18 @@ const postController = {
         data: { isDeleted: true },
       });
 
+      // Decrement postsCount user (not below 0)
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        select: { postsCount: true },
+      });
+      if (user && user.postsCount > 0) {
+        await prisma.user.update({
+          where: { userId },
+          data: { postsCount: { decrement: 1 } },
+        });
+      }
+
       res.status(200).json({
         success: true,
         message: "Post deleted successfully",
@@ -1065,13 +1077,13 @@ const postController = {
         // Decrement postsCount user jika post berhasil dihapus
         const currentUser = await tx.user.findUnique({
           where: { userId: post.author.userId },
-          select: { postsCount: true }
+          select: { postsCount: true },
         });
-        
+
         await tx.user.update({
           where: { userId: post.author.userId },
-          data: { 
-            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1)
+          data: {
+            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1),
           },
         });
 
@@ -1366,13 +1378,13 @@ const postController = {
         // Decrement postsCount user jika post berhasil dihapus
         const currentUser = await tx.user.findUnique({
           where: { userId: post.author.userId },
-          select: { postsCount: true }
+          select: { postsCount: true },
         });
-        
+
         await tx.user.update({
           where: { userId: post.author.userId },
-          data: { 
-            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1)
+          data: {
+            postsCount: Math.max(0, (currentUser?.postsCount || 0) - 1),
           },
         });
 
