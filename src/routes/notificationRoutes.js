@@ -41,4 +41,10 @@ router.get(
   notificationController.getUserNotificationsByType
 );
 
+// Delete all notifications for a specific user
+router.delete(
+  "/user/:userId/all",
+  notificationController.deleteAllUserNotifications
+);
+
 module.exports = router;

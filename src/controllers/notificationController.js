@@ -448,4 +448,25 @@ module.exports = {
       return { success: false, error: error.message };
     }
   },
+
+  // Delete all notifications for the logged-in user (self only)
+  deleteAllUserNotifications: async (req, res) => {
+    try {
+      const { userId } = req.params;
+      // Hanya izinkan jika user yang login sama dengan userId di params
+      if (req.user.userId !== userId) {
+        return res.status(403).json({
+          error: "Forbidden: You can only delete your own notifications",
+        });
+      }
+      await prisma.notification.deleteMany({ where: { userId } });
+      res.json({
+        success: true,
+        message: "All notifications deleted for user",
+      });
+    } catch (error) {
+      console.error("Error deleting all notifications for user:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };
