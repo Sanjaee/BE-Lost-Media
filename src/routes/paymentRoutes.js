@@ -18,6 +18,18 @@ router.get(
   paymentController.getPaymentStatus
 );
 router.get("/user/:userId", authMiddleware, paymentController.getUserPayments);
+// Cek payment pending milik user (protected)
+router.get(
+  "/pending",
+  authMiddleware,
+  paymentController.getPendingPaymentByUser
+);
+// Cancel payment (protected)
+router.patch(
+  "/cancel/:orderId",
+  authMiddleware,
+  paymentController.cancelPayment
+);
 
 // Midtrans notification callback (public, called by Midtrans)
 router.post("/notification", paymentController.handleNotification);

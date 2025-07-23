@@ -373,6 +373,47 @@ class MidtransController {
     }
   }
 
+  // Mendapatkan payment pending milik user
+  static async getPendingPaymentByUser(req, res) {
+    try {
+      const userId = req.user.userId;
+      const pendingPayment = await prisma.payment.findFirst({
+        where: {
+          userId,
+          status: "PENDING",
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          orderId: true,
+          userId: true,
+          role: true,
+          amount: true,
+          midtransResponse: true,
+          midtransAction: true,
+          createdAt: true,
+          updatedAt: true,
+          roleModel: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              benefit: true,
+              price: true,
+            },
+          },
+        },
+      });
+      console.log(pendingPayment);
+      if (pendingPayment) {
+        return res.json({ success: true, data: pendingPayment });
+      }
+      return res.json({ success: true, data: null });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: "Server error" });
+    }
+  }
+
   // Create a new role (only owner)
   static async createRole(req, res) {
     try {
@@ -385,11 +426,9 @@ class MidtransController {
       }
       const { name, price, benefit, image } = req.body;
       if (!name || typeof name !== "string" || name.length < 2) {
-        return res
-          .status(400)
-          .json({
-            error: "Role name is required and must be at least 2 characters",
-          });
+        return res.status(400).json({
+          error: "Role name is required and must be at least 2 characters",
+        });
       }
       if (typeof price !== "number" || price < 0) {
         return res
@@ -397,11 +436,9 @@ class MidtransController {
           .json({ error: "Price must be a non-negative number" });
       }
       if (!benefit || typeof benefit !== "string" || benefit.length < 2) {
-        return res
-          .status(400)
-          .json({
-            error: "Benefit is required and must be at least 2 characters",
-          });
+        return res.status(400).json({
+          error: "Benefit is required and must be at least 2 characters",
+        });
       }
       // image is optional
       // Check for unique name
@@ -421,6 +458,29 @@ class MidtransController {
     } catch (error) {
       console.error("Create role error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  static async cancelPayment(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { orderId } = req.params;
+      const payment = await prisma.payment.findFirst({
+        where: { orderId, userId, status: "PENDING" },
+      });
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          error: "Payment not found or not cancellable",
+        });
+      }
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "CANCELLED" },
+      });
+      return res.json({ success: true, message: "Payment cancelled" });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: "Server error" });
     }
   }
 }
