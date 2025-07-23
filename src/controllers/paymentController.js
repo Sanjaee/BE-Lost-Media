@@ -1,0 +1,377 @@
+const dotenv = require("dotenv");
+const { PrismaClient } = require("@prisma/client");
+const crypto = require("crypto");
+const axios = require("axios");
+
+const prisma = new PrismaClient();
+
+// Helper: Map Midtrans status to Prisma enum
+function mapMidtransStatusToPrisma(status) {
+  switch (status) {
+    case "pending":
+      return "PENDING";
+    case "settlement":
+      return "SUCCESS";
+    case "capture":
+      return "SUCCESS";
+    case "deny":
+      return "FAILED";
+    case "cancel":
+      return "CANCELLED";
+    case "expire":
+      return "EXPIRED";
+    default:
+      return "PENDING";
+  }
+}
+
+dotenv.config();
+
+// Konfigurasi Midtrans
+const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY;
+const MIDTRANS_BASE_URL = "https://api.sandbox.midtrans.com/v2";
+
+class MidtransController {
+  // Get all roles (for frontend UI)
+  static async getAllRoles(req, res) {
+    try {
+      const roles = await prisma.role.findMany({
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          benefit: true,
+          image: true,
+        },
+        orderBy: { price: "desc" },
+      });
+      res.json({ success: true, data: roles });
+    } catch (error) {
+      console.error("Get all roles error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Create payment token untuk Core API
+  // Create payment token untuk Core API
+  static async createPayment(req, res) {
+    try {
+      const { roleId, paymentMethod = "credit_card", bank } = req.body;
+      const userId = req.user.userId;
+
+      // Get role data (price, name, etc)
+      const role = await prisma.role.findUnique({ where: { id: roleId } });
+      if (!role) return res.status(404).json({ error: "Role not found" });
+      const user = await prisma.user.findUnique({ where: { userId } });
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      const orderId = `order-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      const grossAmount = role.price;
+      const totalAmount = grossAmount;
+      let paymentType = paymentMethod;
+      if (paymentMethod === "gopay") paymentType = "qris"; // optional, bisa pakai gopay juga
+
+      // Create payment record (PENDING)
+      const payment = await prisma.payment.create({
+        data: {
+          orderId,
+          userId,
+          role: role.name,
+          amount: grossAmount,
+          adminFee: 0,
+          totalAmount,
+          status: "PENDING",
+          paymentMethod,
+          paymentType,
+        },
+      });
+
+      // Prepare charge data for Midtrans
+      const chargeData = {
+        payment_type: paymentMethod,
+        transaction_details: {
+          order_id: orderId,
+          gross_amount: totalAmount,
+        },
+        customer_details: {
+          first_name: user.username,
+          email: user.email,
+        },
+        item_details: [
+          {
+            id: role.id,
+            price: role.price,
+            quantity: 1,
+            name: role.name,
+            category: "role",
+          },
+        ],
+      };
+
+      if (paymentMethod === "credit_card") {
+        chargeData.credit_card = {
+          secure: true,
+          authentication: true,
+        };
+      } else if (paymentMethod === "bank_transfer") {
+        chargeData.bank_transfer = {
+          bank: bank || "bca",
+        };
+      } else if (paymentMethod === "gopay") {
+        chargeData.gopay = {
+          enable_callback: true,
+          callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
+        };
+      }
+
+      // Charge ke Midtrans
+      const auth = Buffer.from(MIDTRANS_SERVER_KEY + ":").toString("base64");
+      const response = await axios.post(
+        `${MIDTRANS_BASE_URL}/charge`,
+        chargeData,
+        {
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const result = response.data;
+
+      console.log("Midtrans response:", result.actions);
+
+      // Simpan seluruh response Midtrans (termasuk actions) ke midtransResponse
+      await prisma.payment.update({
+        where: { orderId },
+        data: {
+          midtransTransactionId: result.transaction_id,
+          status: mapMidtransStatusToPrisma(result.transaction_status),
+          fraudStatus: result.fraud_status || null,
+          midtransResponse: JSON.stringify(result),
+          midtransAction: JSON.stringify(result.actions),
+        },
+      });
+
+      // Kirim ke frontend
+      res.json({
+        success: true,
+        data: {
+          paymentId: payment.id,
+          orderId,
+          amount: totalAmount,
+          paymentMethod,
+          actions: result.actions, // langsung kirim actions ke FE
+          midtransResponse: result,
+          status: result.transaction_status,
+        },
+      });
+    } catch (error) {
+      console.error("Create payment error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Update user role after payment is successful
+  static async getPaymentStatus(req, res) {
+    try {
+      const { orderId } = req.params;
+      const payment = await prisma.payment.findUnique({
+        where: { orderId: orderId },
+        include: {
+          user: true,
+          roleModel: true,
+        },
+      });
+      if (!payment) {
+        return res.status(404).json({ error: "Payment not found" });
+      }
+      // Get status from Midtrans
+      const auth = Buffer.from(MIDTRANS_SERVER_KEY + ":").toString("base64");
+      const response = await axios.get(
+        `${MIDTRANS_BASE_URL}/${orderId}/status`,
+        {
+          headers: {
+            Authorization: `Basic ${auth}`,
+          },
+        }
+      );
+      const result = response.data;
+      // Extract additional fields from Midtrans response
+      let paymentUpdate = {
+        status: mapMidtransStatusToPrisma(result.transaction_status),
+        transactionStatus: result.transaction_status,
+        fraudStatus: result.fraud_status || null,
+        midtransResponse: JSON.stringify(result),
+      };
+      if (
+        result.va_numbers &&
+        Array.isArray(result.va_numbers) &&
+        result.va_numbers.length > 0
+      ) {
+        paymentUpdate.vaNumber = result.va_numbers[0].va_number;
+        paymentUpdate.bankType = result.va_numbers[0].bank;
+      }
+      if (result.permata_va_number) {
+        paymentUpdate.vaNumber = result.permata_va_number;
+        paymentUpdate.bankType = "permata";
+      }
+      if (result.payment_code) paymentUpdate.paymentCode = result.payment_code;
+      if (result.expiry_time)
+        paymentUpdate.expiryTime = new Date(result.expiry_time);
+      if (result.paid_at) paymentUpdate.paidAt = new Date(result.paid_at);
+      // QRIS/GoPay
+      if (result.actions && Array.isArray(result.actions)) {
+        const qrAction = result.actions.find(
+          (a) => a.name === "generate-qr-code"
+        );
+        if (qrAction && qrAction.url)
+          paymentUpdate.snapRedirectUrl = qrAction.url;
+      }
+      // If payment is successful, update user role
+      if (
+        mapMidtransStatusToPrisma(result.transaction_status) === "SUCCESS" &&
+        payment.userId &&
+        payment.role
+      ) {
+        await prisma.user.update({
+          where: { userId: payment.userId },
+          data: { role: payment.role },
+        });
+      }
+      const updatedPayment = await prisma.payment.update({
+        where: { orderId: orderId },
+        data: paymentUpdate,
+        include: { user: true, roleModel: true },
+      });
+      res.json({
+        success: true,
+        data: {
+          ...updatedPayment,
+          status: result.transaction_status,
+          fraudStatus: result.fraud_status,
+        },
+      });
+    } catch (error) {
+      console.error("Get payment status error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Handle notification dari Midtrans
+  static async handleNotification(req, res) {
+    try {
+      const notification = req.body;
+
+      // Verify signature
+      const serverKey = MIDTRANS_SERVER_KEY;
+      const orderId = notification.order_id;
+      const statusCode = notification.status_code;
+      const grossAmount = notification.gross_amount;
+      const signatureKey = crypto
+        .createHash("sha512")
+        .update(orderId + statusCode + grossAmount + serverKey)
+        .digest("hex");
+
+      if (signatureKey !== notification.signature_key) {
+        return res.status(400).json({ error: "Invalid signature" });
+      }
+
+      // Update payment status
+      const payment = await prisma.payment.findUnique({
+        where: { orderId: orderId },
+        include: { user: true, roleModel: true },
+      });
+
+      if (!payment) {
+        return res.status(404).json({ error: "Payment not found" });
+      }
+
+      // Extract additional fields from Midtrans notification
+      let paymentUpdate = {
+        status: mapMidtransStatusToPrisma(notification.transaction_status),
+        transactionStatus: notification.transaction_status,
+        fraudStatus: notification.fraud_status || null,
+        midtransResponse: JSON.stringify(notification),
+        updatedAt: new Date(),
+      };
+      if (
+        notification.va_numbers &&
+        Array.isArray(notification.va_numbers) &&
+        notification.va_numbers.length > 0
+      ) {
+        paymentUpdate.vaNumber = notification.va_numbers[0].va_number;
+        paymentUpdate.bankType = notification.va_numbers[0].bank;
+      }
+      if (notification.permata_va_number) {
+        paymentUpdate.vaNumber = notification.permata_va_number;
+        paymentUpdate.bankType = "permata";
+      }
+      if (notification.payment_code)
+        paymentUpdate.paymentCode = notification.payment_code;
+      if (notification.expiry_time)
+        paymentUpdate.expiryTime = new Date(notification.expiry_time);
+      if (notification.paid_at)
+        paymentUpdate.paidAt = new Date(notification.paid_at);
+      // QRIS/GoPay
+      if (notification.actions && Array.isArray(notification.actions)) {
+        const qrAction = notification.actions.find(
+          (a) => a.name === "generate-qr-code"
+        );
+        if (qrAction && qrAction.url)
+          paymentUpdate.snapRedirectUrl = qrAction.url;
+      }
+      // JANGAN timpa snapRedirectUrl jika tidak ada QR baru
+
+      const updatedPayment = await prisma.payment.update({
+        where: { orderId: orderId },
+        data: paymentUpdate,
+        include: { user: true, roleModel: true },
+      });
+      // If payment is successful, update user role
+      if (
+        mapMidtransStatusToPrisma(notification.transaction_status) ===
+          "SUCCESS" &&
+        updatedPayment.userId &&
+        updatedPayment.role
+      ) {
+        await prisma.user.update({
+          where: { userId: updatedPayment.userId },
+          data: { role: updatedPayment.role },
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Handle notification error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // Get all payments for user
+  static async getUserPayments(req, res) {
+    try {
+      const { userId } = req.params;
+
+      const payments = await prisma.payment.findMany({
+        where: { userId: userId },
+        include: {
+          product: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      res.json({
+        success: true,
+        data: payments,
+      });
+    } catch (error) {
+      console.error("Get user payments error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+}
+
+module.exports = MidtransController;

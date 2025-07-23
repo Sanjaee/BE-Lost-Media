@@ -45,6 +45,8 @@ model User {
   bannedUsers User[] @relation("BannedBy")
   bannedByUser User? @relation("BannedBy", fields: [bannedBy], references: [userId])
 
+  payments Payment[]
+
   @@map("users")
 }
 
@@ -166,4 +168,53 @@ model ContentSection {
   post        Post     @relation(fields: [postId], references: [postId], onDelete: Cascade)
 
   @@map("content_sections")
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  price     Int
+  benefit   String
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payments  Payment[]
+}
+
+model Payment {
+  id                    String      @id @default(uuid())
+  orderId               String      @unique
+  userId                String
+  role                  String
+  amount                Int
+  adminFee              Int         @default(0)
+  totalAmount           Int
+  paymentMethod         String      // credit_card, bank_transfer, gopay, etc
+  paymentType           String?     // qris, bank_transfer, credit_card, etc
+  status                PaymentStatus @default(PENDING)
+  snapToken             String?
+  snapRedirectUrl       String?
+  transactionId         String?
+  midtransTransactionId String?
+  transactionStatus     String?
+  fraudStatus           String?
+  paymentCode           String?     // untuk bank transfer
+  vaNumber              String?     // untuk virtual account
+  bankType              String?     // mandiri, bca, bni, etc
+  expiryTime            DateTime?
+  paidAt                DateTime?
+  midtransResponse      String?     // JSON response from Midtrans
+  midtransAction        String?     // JSON.stringify(result.actions)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  user                  User        @relation(fields: [userId], references: [userId])
+  roleModel             Role?       @relation(fields: [role], references: [name])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
 }

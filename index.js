@@ -7,6 +7,7 @@ const passport = require("./src/config/passportConfig");
 const authRoutes = require("./src/routes/authRoutes");
 const postRoutes = require("./src/routes/postRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
+const paymentRoutes = require("./src/routes/paymentRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -59,6 +60,7 @@ app.use(passport.session());
 app.use("/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/payment", paymentRoutes);
 
 // Health check route
 app.get("/health", (req, res) => {
@@ -71,7 +73,6 @@ app.get("/health", (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Error:", err);
   res.status(500).json({
     error: "Internal server error",
     message:

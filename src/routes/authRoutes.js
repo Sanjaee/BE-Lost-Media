@@ -6,6 +6,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const notificationController = require("../controllers/notificationController");
 const router = express.Router();
 const prisma = require("../utils/prisma");
+const paymentController = require("../controllers/paymentController");
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req, res, next) => {
