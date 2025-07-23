@@ -372,6 +372,57 @@ class MidtransController {
       res.status(500).json({ error: "Internal server error" });
     }
   }
+
+  // Create a new role (only owner)
+  static async createRole(req, res) {
+    try {
+      // Only allow owner
+      const requesterRole = req.user?.role || req.headers["x-user-role"];
+      if (requesterRole !== "owner") {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only owner can create roles" });
+      }
+      const { name, price, benefit, image } = req.body;
+      if (!name || typeof name !== "string" || name.length < 2) {
+        return res
+          .status(400)
+          .json({
+            error: "Role name is required and must be at least 2 characters",
+          });
+      }
+      if (typeof price !== "number" || price < 0) {
+        return res
+          .status(400)
+          .json({ error: "Price must be a non-negative number" });
+      }
+      if (!benefit || typeof benefit !== "string" || benefit.length < 2) {
+        return res
+          .status(400)
+          .json({
+            error: "Benefit is required and must be at least 2 characters",
+          });
+      }
+      // image is optional
+      // Check for unique name
+      const existing = await prisma.role.findUnique({ where: { name } });
+      if (existing) {
+        return res.status(400).json({ error: "Role name already exists" });
+      }
+      const newRole = await prisma.role.create({
+        data: {
+          name,
+          price,
+          benefit,
+          image: image || null,
+        },
+      });
+      res.json({ success: true, data: newRole });
+    } catch (error) {
+      console.error("Create role error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
 }
 
 module.exports = MidtransController;

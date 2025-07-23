@@ -8,6 +8,8 @@ const authMiddleware = require("../middleware/authMiddleware");
 // Get all roles (public, for buy-role UI)
 router.get("/roles", paymentController.getAllRoles);
 
+// Create a new role (only owner)
+router.post("/roles", authMiddleware, paymentController.createRole);
 // Payment creation and status (protected)
 router.post("/create", authMiddleware, paymentController.createPayment);
 router.get(
