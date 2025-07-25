@@ -141,8 +141,6 @@ class MidtransController {
 
       const result = response.data;
 
-      console.log("Midtrans response:", result.actions);
-
       // Simpan seluruh response Midtrans (termasuk actions) ke midtransResponse
       await prisma.payment.update({
         where: { orderId },
@@ -358,7 +356,12 @@ class MidtransController {
       const payments = await prisma.payment.findMany({
         where: { userId: userId },
         include: {
-          product: true,
+          roleModel: {
+            select: {
+              name: true,
+              image: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -404,7 +407,7 @@ class MidtransController {
           },
         },
       });
-      console.log(pendingPayment);
+
       if (pendingPayment) {
         return res.json({ success: true, data: pendingPayment });
       }

@@ -17,7 +17,8 @@ router.get(
   authMiddleware,
   paymentController.getPaymentStatus
 );
-router.get("/user/:userId", authMiddleware, paymentController.getUserPayments);
+// Get all payments for user
+router.get("/user/:userId", paymentController.getUserPayments);
 // Cek payment pending milik user (protected)
 router.get(
   "/pending",
