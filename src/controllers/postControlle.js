@@ -312,11 +312,11 @@ const postController = {
       }
       // Batasan jumlah post berdasarkan role
       const roleLimit = {
-        member: 1,
+        member: 3,
         vip: 5,
-        god: 20,
+        god: 10,
       };
-      const privilegedRoles = ["owner", "admin", "mod"];
+      const privilegedRoles = ["owner", "admin"];
       if (
         !privilegedRoles.includes(user.role) &&
         user.role in roleLimit &&
@@ -752,7 +752,7 @@ const postController = {
       const { isPublished } = req.body;
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,
@@ -823,7 +823,7 @@ const postController = {
   // Get all unpublished posts (only for certain roles)
   getUnpublishedPosts: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
@@ -892,7 +892,7 @@ const postController = {
   // Search unpublished posts (only for certain roles)
   searchUnpublishedPosts: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
@@ -1031,7 +1031,7 @@ const postController = {
     try {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,
@@ -1119,7 +1119,7 @@ const postController = {
   // Get all published posts (only for certain roles)
   getPublishedPosts: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
@@ -1188,7 +1188,7 @@ const postController = {
   // Search published posts (only for certain roles)
   searchPublishedPosts: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
@@ -1327,7 +1327,7 @@ const postController = {
     try {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,
@@ -1422,7 +1422,7 @@ const postController = {
     try {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,
@@ -1516,7 +1516,7 @@ const postController = {
     try {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,
@@ -1643,7 +1643,7 @@ const postController = {
     try {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       if (!allowedRoles.includes(requesterRole)) {
         return res.status(403).json({
           success: false,

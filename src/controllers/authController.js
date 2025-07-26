@@ -322,10 +322,10 @@ const authController = {
     });
   },
 
-  // Get all users with role owner, admin, or mod
+  // Get all users with role owner, admin
   getAllStaffUsers: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       // Ambil role dari header jika ada, fallback ke req.user.role
       const requesterRole = req.headers["x-user-role"] || req.user.role;
       if (!allowedRoles.includes(requesterRole)) {
@@ -366,7 +366,7 @@ const authController = {
           .json({ error: "Forbidden: Only owner can update roles" });
       }
       const { userId, role } = req.body;
-      const allowedRoles = ["owner", "admin", "mod", "god", "vip", "member"];
+      const allowedRoles = ["owner", "admin"];
       if (!userId || !role) {
         return res.status(400).json({ error: "UserId and role are required" });
       }
@@ -452,17 +452,17 @@ const authController = {
     }
   },
 
-  // Update user star (hanya untuk owner, admin, mod)
+  // Update user star (hanya untuk owner, admin)
   updateStar: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       // Ambil role dari header jika ada, fallback ke req.user.role
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
         return res
           .status(403)
-          .json({ error: "Forbidden: Only staff can update star" });
+          .json({ error: "Forbidden: Only owner and admin can update star" });
       }
       const { userId, star } = req.body;
       if (!userId || typeof star !== "number") {
@@ -494,16 +494,18 @@ const authController = {
     }
   },
 
-  // Get star by userId (hanya untuk owner, admin, mod)
+  // Get star by userId (hanya untuk owner, admin)
   getStarById: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
         return res
           .status(403)
-          .json({ error: "Forbidden: Only staff can access this endpoint" });
+          .json({
+            error: "Forbidden: Only owner and admin can access this endpoint",
+          });
       }
       const { userId } = req.params;
       if (!userId) {
@@ -526,7 +528,7 @@ const authController = {
   // Search all users with pagination and filtering
   searchAllUsers: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole = req.headers["x-user-role"] || req.user?.role;
 
       if (!allowedRoles.includes(requesterRole)) {
@@ -776,10 +778,10 @@ const authController = {
     }
   },
 
-  // Unban user (only for owner, admin, mod)
+  // Unban user (only for owner, admin)
   unbanUser: async (req, res) => {
     try {
-      const allowedRoles = ["owner", "admin", "mod"];
+      const allowedRoles = ["owner", "admin"];
       const requesterRole = req.headers["x-user-role"] || req.user?.role;
 
       if (!allowedRoles.includes(requesterRole)) {
