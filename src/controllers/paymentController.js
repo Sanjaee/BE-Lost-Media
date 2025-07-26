@@ -227,16 +227,39 @@ class MidtransController {
         if (qrAction && qrAction.url)
           paymentUpdate.snapRedirectUrl = qrAction.url;
       }
-      // If payment is successful, update user role
+      // If payment is successful, update user role and send notification
       if (
         mapMidtransStatusToPrisma(result.transaction_status) === "SUCCESS" &&
-        payment.userId &&
-        payment.role
+        payment.userId
       ) {
-        await prisma.user.update({
-          where: { userId: payment.userId },
-          data: { role: payment.role },
-        });
+        // Update user role if it's a role payment
+        if (payment.role && (payment.type === "role" || !payment.type)) {
+          await prisma.user.update({
+            where: { userId: payment.userId },
+            data: { role: payment.role },
+          });
+
+          // Send role purchase notification
+          const notificationController = require("./notificationController");
+          const notificationResult =
+            await notificationController.createRolePurchaseNotification(
+              payment.userId,
+              payment.user?.username || "User",
+              payment.role,
+              payment.amount,
+              payment.orderId
+            );
+
+          if (notificationResult.success) {
+            console.log(
+              `Payment success notification sent for order ${payment.orderId}, user ${payment.userId}, role ${payment.role}`
+            );
+          } else {
+            console.log(
+              `Payment notification skipped for order ${payment.orderId}: ${notificationResult.message}`
+            );
+          }
+        }
       }
       const updatedPayment = await prisma.payment.update({
         where: { orderId: orderId },
@@ -327,17 +350,72 @@ class MidtransController {
         data: paymentUpdate,
         include: { user: true, roleModel: true },
       });
-      // If payment is successful, update user role
+      // If payment is successful, update user role and send notification
       if (
         mapMidtransStatusToPrisma(notification.transaction_status) ===
           "SUCCESS" &&
-        updatedPayment.userId &&
-        updatedPayment.role
+        updatedPayment.userId
       ) {
-        await prisma.user.update({
-          where: { userId: updatedPayment.userId },
-          data: { role: updatedPayment.role },
-        });
+        // Update user role if it's a role payment
+        if (
+          updatedPayment.role &&
+          (updatedPayment.type === "role" || !updatedPayment.type)
+        ) {
+          await prisma.user.update({
+            where: { userId: updatedPayment.userId },
+            data: { role: updatedPayment.role },
+          });
+
+          // Send role purchase notification
+          const notificationController = require("./notificationController");
+          const notificationResult =
+            await notificationController.createRolePurchaseNotification(
+              updatedPayment.userId,
+              updatedPayment.user?.username || "User",
+              updatedPayment.role,
+              updatedPayment.amount,
+              updatedPayment.orderId
+            );
+
+          if (notificationResult.success) {
+            console.log(
+              `Payment success notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, role ${updatedPayment.role}`
+            );
+          } else {
+            console.log(
+              `Payment notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
+            );
+          }
+        }
+
+        // Update user star if it's a star payment
+        if (updatedPayment.star && updatedPayment.type === "star") {
+          await prisma.user.update({
+            where: { userId: updatedPayment.userId },
+            data: { star: updatedPayment.star },
+          });
+
+          // Send star upgrade notification
+          const notificationController = require("./notificationController");
+          const notificationResult =
+            await notificationController.createStarUpgradeNotification(
+              updatedPayment.userId,
+              updatedPayment.user?.username || "User",
+              updatedPayment.star,
+              updatedPayment.amount,
+              updatedPayment.orderId
+            );
+
+          if (notificationResult.success) {
+            console.log(
+              `Star upgrade notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, star ${updatedPayment.star}`
+            );
+          } else {
+            console.log(
+              `Star notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
+            );
+          }
+        }
       }
 
       res.json({ success: true });
@@ -614,7 +692,6 @@ class MidtransController {
           }
         );
         result = response.data;
-
       } catch (err) {
         console.error("Midtrans error:", err?.response?.data || err.message);
         return res.status(400).json({
@@ -723,16 +800,38 @@ class MidtransController {
         if (qrAction && qrAction.url)
           paymentUpdate.snapRedirectUrl = qrAction.url;
       }
-      // Jika payment sukses, update star user
+      // Jika payment sukses, update star user dan kirim notifikasi
       if (
         mapMidtransStatusToPrisma(result.transaction_status) === "SUCCESS" &&
         payment.userId &&
-        payment.star
+        payment.star &&
+        payment.type === "star"
       ) {
         await prisma.user.update({
           where: { userId: payment.userId },
           data: { star: payment.star },
         });
+
+        // Send star upgrade notification
+        const notificationController = require("./notificationController");
+        const notificationResult =
+          await notificationController.createStarUpgradeNotification(
+            payment.userId,
+            payment.user?.username || "User",
+            payment.star,
+            payment.amount,
+            payment.orderId
+          );
+
+        if (notificationResult.success) {
+          console.log(
+            `Star upgrade notification sent for order ${payment.orderId}, user ${payment.userId}, star ${payment.star}`
+          );
+        } else {
+          console.log(
+            `Star notification skipped for order ${payment.orderId}: ${notificationResult.message}`
+          );
+        }
       }
       const updatedPayment = await prisma.payment.update({
         where: { orderId },

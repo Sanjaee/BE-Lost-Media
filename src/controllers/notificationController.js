@@ -469,4 +469,185 @@ module.exports = {
       res.status(500).json({ error: "Internal server error" });
     }
   },
+
+  // Create notification for successful role purchase
+  createRolePurchaseNotification: async (
+    userId,
+    username,
+    roleName,
+    amount,
+    orderId = null
+  ) => {
+    try {
+      // Check if notification already exists for this payment
+      const existingNotification = await prisma.notification.findFirst({
+        where: {
+          userId: userId,
+          type: "role_purchased",
+          content: {
+            contains: `Pembelian role ${roleName} berhasil`,
+          },
+          createdAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
+          },
+        },
+      });
+
+      if (existingNotification) {
+        console.log(
+          `Role purchase notification already exists for user ${userId}, role ${roleName}`
+        );
+        return { success: false, message: "Notification already exists" };
+      }
+
+      const notification = await prisma.notification.create({
+        data: {
+          userId: userId,
+          actorId: userId, // Self notification
+          type: "role_purchased",
+          content: `Selamat! Pembelian role ${roleName} berhasil. Anda telah membayar Rp ${amount.toLocaleString(
+            "id-ID"
+          )}.${orderId ? ` (Order: ${orderId})` : ""}`,
+          actionUrl: `/profile/${userId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      console.log(
+        `Role purchase notification created for user ${userId}, role ${roleName}`
+      );
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating role purchase notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Create notification for successful star upgrade
+  createStarUpgradeNotification: async (
+    userId,
+    username,
+    newStar,
+    amount,
+    orderId = null
+  ) => {
+    try {
+      // Check if notification already exists for this payment
+      const existingNotification = await prisma.notification.findFirst({
+        where: {
+          userId: userId,
+          type: "star_upgraded",
+          content: {
+            contains: `Upgrade star ke level ${newStar} berhasil`,
+          },
+          createdAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
+          },
+        },
+      });
+
+      if (existingNotification) {
+        console.log(
+          `Star upgrade notification already exists for user ${userId}, star ${newStar}`
+        );
+        return { success: false, message: "Notification already exists" };
+      }
+
+      const notification = await prisma.notification.create({
+        data: {
+          userId: userId,
+          actorId: userId, // Self notification
+          type: "star_upgraded",
+          content: `Selamat! Upgrade star ke level ${newStar} berhasil. Anda telah membayar Rp ${amount.toLocaleString(
+            "id-ID"
+          )}.${orderId ? ` (Order: ${orderId})` : ""}`,
+          actionUrl: `/profile/${userId}`,
+        },
+        include: {
+          actor: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+        },
+      });
+      console.log(
+        `Star upgrade notification created for user ${userId}, star ${newStar}`
+      );
+      return { success: true, notification };
+    } catch (error) {
+      console.error("Error creating star upgrade notification:", error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Helper function to check if payment notification exists
+  checkPaymentNotificationExists: async (userId, type, orderId = null) => {
+    try {
+      const whereClause = {
+        userId: userId,
+        type: type,
+        createdAt: {
+          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
+        },
+      };
+
+      // If orderId is provided, add it to the search
+      if (orderId) {
+        whereClause.content = {
+          contains: orderId,
+        };
+      }
+
+      const existingNotification = await prisma.notification.findFirst({
+        where: whereClause,
+      });
+
+      return {
+        exists: !!existingNotification,
+        notification: existingNotification,
+      };
+    } catch (error) {
+      console.error("Error checking payment notification:", error);
+      return { exists: false, error: error.message };
+    }
+  },
+
+  // Get payment notification status for debugging
+  getPaymentNotificationStatus: async (req, res) => {
+    try {
+      const { userId, type, orderId } = req.query;
+
+      if (!userId || !type) {
+        return res.status(400).json({
+          error: "userId and type are required",
+        });
+      }
+
+      const status = await module.exports.checkPaymentNotificationExists(
+        userId,
+        type,
+        orderId
+      );
+
+      res.json({
+        success: true,
+        data: status,
+      });
+    } catch (error) {
+      console.error("Error getting payment notification status:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
 };

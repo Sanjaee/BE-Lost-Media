@@ -47,4 +47,54 @@ router.delete(
   notificationController.deleteAllUserNotifications
 );
 
+// Payment success notifications (called by payment system)
+router.post(
+  "/payment/role-success",
+  notificationController.createRolePurchaseNotification
+);
+router.post(
+  "/payment/star-success",
+  notificationController.createStarUpgradeNotification
+);
+
+// Test route for payment notifications (for testing purposes)
+router.post("/test/payment-notifications", authMiddleware, async (req, res) => {
+  try {
+    const { type, userId, roleName, starLevel, amount } = req.body;
+
+    if (type === "role") {
+      const result =
+        await notificationController.createRolePurchaseNotification(
+          userId,
+          "TestUser",
+          roleName || "VIP",
+          amount || 50000,
+          req.body.orderId || `test-order-${Date.now()}`
+        );
+      res.json(result);
+    } else if (type === "star") {
+      const result = await notificationController.createStarUpgradeNotification(
+        userId,
+        "TestUser",
+        starLevel || 3,
+        amount || 10000,
+        req.body.orderId || `test-order-${Date.now()}`
+      );
+      res.json(result);
+    } else {
+      res.status(400).json({ error: "Invalid type. Use 'role' or 'star'" });
+    }
+  } catch (error) {
+    console.error("Test notification error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Check payment notification status (for debugging)
+router.get(
+  "/payment/status",
+  authMiddleware,
+  notificationController.getPaymentNotificationStatus
+);
+
 module.exports = router;
