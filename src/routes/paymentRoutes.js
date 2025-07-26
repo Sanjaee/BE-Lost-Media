@@ -10,6 +10,8 @@ router.get("/roles", paymentController.getAllRoles);
 
 // Create a new role (only owner)
 router.post("/roles", authMiddleware, paymentController.createRole);
+// Delete a role (only owner)
+router.delete("/roles/:roleId", authMiddleware, paymentController.deleteRole);
 // Payment creation and status (protected)
 router.post("/create", authMiddleware, paymentController.createPayment);
 router.get(

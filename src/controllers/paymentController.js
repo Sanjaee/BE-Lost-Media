@@ -360,6 +360,7 @@ class MidtransController {
             select: {
               name: true,
               image: true,
+              benefit: true,
             },
           },
         },
@@ -438,10 +439,20 @@ class MidtransController {
           .status(400)
           .json({ error: "Price must be a non-negative number" });
       }
-      if (!benefit || typeof benefit !== "string" || benefit.length < 2) {
+      if (!benefit || !Array.isArray(benefit) || benefit.length === 0) {
         return res.status(400).json({
-          error: "Benefit is required and must be at least 2 characters",
+          error: "Benefit is required and must be a non-empty array",
         });
+      }
+      // Validate each benefit item
+      for (let i = 0; i < benefit.length; i++) {
+        if (typeof benefit[i] !== "string" || benefit[i].trim().length < 2) {
+          return res.status(400).json({
+            error: `Benefit item ${
+              i + 1
+            } must be a string with at least 2 characters`,
+          });
+        }
       }
       // image is optional
       // Check for unique name
@@ -484,6 +495,52 @@ class MidtransController {
       return res.json({ success: true, message: "Payment cancelled" });
     } catch (err) {
       return res.status(500).json({ success: false, error: "Server error" });
+    }
+  }
+
+  // Delete a role (only owner)
+  static async deleteRole(req, res) {
+    try {
+      // Only allow owner
+      const requesterRole = req.user?.role || req.headers["x-user-role"];
+      if (requesterRole !== "owner") {
+        return res
+          .status(403)
+          .json({ error: "Forbidden: Only owner can delete roles" });
+      }
+
+      const { roleId } = req.params;
+
+      // Check if role exists
+      const existingRole = await prisma.role.findUnique({
+        where: { id: roleId },
+      });
+
+      if (!existingRole) {
+        return res.status(404).json({ error: "Role not found" });
+      }
+
+      // Check if there are any payments using this role
+      const paymentsWithRole = await prisma.payment.findFirst({
+        where: { role: existingRole.name },
+      });
+
+      if (paymentsWithRole) {
+        return res.status(400).json({
+          error:
+            "Cannot delete role: There are existing payments using this role",
+        });
+      }
+
+      // Delete the role
+      await prisma.role.delete({
+        where: { id: roleId },
+      });
+
+      res.json({ success: true, message: "Role deleted successfully" });
+    } catch (error) {
+      console.error("Delete role error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   }
 }
