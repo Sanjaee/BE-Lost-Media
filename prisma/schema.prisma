@@ -205,6 +205,8 @@ model Payment {
   paidAt                DateTime?
   midtransResponse      String?     // JSON response from Midtrans
   midtransAction        String?     // JSON.stringify(result.actions)
+  star                  Int?        // untuk payment star (target star)
+  type                  String?     // "star" atau "role"
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
   user                  User        @relation(fields: [userId], references: [userId])

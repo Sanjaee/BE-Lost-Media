@@ -19,6 +19,17 @@ router.get(
   authMiddleware,
   paymentController.getPaymentStatus
 );
+// Payment Star (protected)
+router.post(
+  "/star/create",
+  authMiddleware,
+  paymentController.createStarPayment
+);
+router.get(
+  "/star/status/:orderId",
+  authMiddleware,
+  paymentController.getStarPaymentStatus
+);
 // Get all payments for user
 router.get("/user/:userId", paymentController.getUserPayments);
 // Cek payment pending milik user (protected)
