@@ -139,7 +139,6 @@ class MidtransController {
       );
 
       const result = response.data;
-      console.log("Midtrans response:", result); // Debug response
 
       // Simpan seluruh response Midtrans (termasuk actions) ke midtransResponse
       await prisma.payment.update({
@@ -615,7 +614,7 @@ class MidtransController {
           }
         );
         result = response.data;
-        console.log("Midtrans response:", result); // Debug response
+
       } catch (err) {
         console.error("Midtrans error:", err?.response?.data || err.message);
         return res.status(400).json({
