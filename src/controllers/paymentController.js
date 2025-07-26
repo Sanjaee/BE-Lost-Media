@@ -2,6 +2,7 @@ const dotenv = require("dotenv");
 const { PrismaClient } = require("@prisma/client");
 const crypto = require("crypto");
 const axios = require("axios");
+const { sendAdminPaymentSuccessEmail } = require("../utils/email");
 
 const prisma = new PrismaClient();
 
@@ -259,6 +260,21 @@ class MidtransController {
               `Payment notification skipped for order ${payment.orderId}: ${notificationResult.message}`
             );
           }
+
+          // Kirim email ke admin
+          try {
+            await sendAdminPaymentSuccessEmail({
+              to: "afrizaahmad18@gmail.com",
+              type: "role",
+              username: payment.user?.username || "User",
+              email: payment.user?.email || "No email",
+              role: payment.role,
+              amount: payment.amount,
+              orderId: payment.orderId,
+            });
+          } catch (err) {
+            console.error("Gagal mengirim email ke admin:", err);
+          }
         }
       }
       const updatedPayment = await prisma.payment.update({
@@ -386,6 +402,21 @@ class MidtransController {
               `Payment notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
             );
           }
+
+          // Kirim email ke admin
+          try {
+            await sendAdminPaymentSuccessEmail({
+              to: "afrizaahmad18@gmail.com",
+              type: "role",
+              username: updatedPayment.user?.username || "User",
+              email: updatedPayment.user?.email || "No email",
+              role: updatedPayment.role,
+              amount: updatedPayment.amount,
+              orderId: updatedPayment.orderId,
+            });
+          } catch (err) {
+            console.error("Gagal mengirim email ke admin:", err);
+          }
         }
 
         // Update user star if it's a star payment
@@ -414,6 +445,21 @@ class MidtransController {
             console.log(
               `Star notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
             );
+          }
+
+          // Kirim email ke admin
+          try {
+            await sendAdminPaymentSuccessEmail({
+              to: "afrizaahmad18@gmail.com",
+              type: "star",
+              username: updatedPayment.user?.username || "User",
+              email: updatedPayment.user?.email || "No email",
+              star: updatedPayment.star,
+              amount: updatedPayment.amount,
+              orderId: updatedPayment.orderId,
+            });
+          } catch (err) {
+            console.error("Gagal mengirim email ke admin:", err);
           }
         }
       }
@@ -831,6 +877,21 @@ class MidtransController {
           console.log(
             `Star notification skipped for order ${payment.orderId}: ${notificationResult.message}`
           );
+        }
+
+        // Kirim email ke admin
+        try {
+          await sendAdminPaymentSuccessEmail({
+            to: "afrizaahmad18@gmail.com",
+            type: "star",
+            username: payment.user?.username || "User",
+            email: payment.user?.email || "No email",
+            star: payment.star,
+            amount: payment.amount,
+            orderId: payment.orderId,
+          });
+        } catch (err) {
+          console.error("Gagal mengirim email ke admin:", err);
         }
       }
       const updatedPayment = await prisma.payment.update({
