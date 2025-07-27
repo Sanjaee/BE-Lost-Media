@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const paymentController = require("../controllers/paymentController");
 const authMiddleware = require("../middleware/authMiddleware");
+const {
+  createPaymentRateLimiter,
+} = require("../middleware/rateLimitMiddleware");
 
 // router.use(authMiddleware); // Only protect user-specific routes, not public ones
 
@@ -13,7 +16,12 @@ router.post("/roles", authMiddleware, paymentController.createRole);
 // Delete a role (only owner)
 router.delete("/roles/:roleId", authMiddleware, paymentController.deleteRole);
 // Payment creation and status (protected)
-router.post("/create", authMiddleware, paymentController.createPayment);
+router.post(
+  "/create",
+  authMiddleware,
+  createPaymentRateLimiter,
+  paymentController.createPayment
+);
 router.get(
   "/status/:orderId",
   authMiddleware,
@@ -23,6 +31,7 @@ router.get(
 router.post(
   "/star/create",
   authMiddleware,
+  createPaymentRateLimiter,
   paymentController.createStarPayment
 );
 router.get(
