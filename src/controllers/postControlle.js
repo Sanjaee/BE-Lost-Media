@@ -296,7 +296,8 @@ const postController = {
   // Create new post with content sections
   createPost: async (req, res) => {
     try {
-      const { title, description, category, mediaUrl, sections } = req.body;
+      const { title, description, category, mediaUrl, sections, blurred } =
+        req.body;
       const { userId } = req.user;
 
       // Ambil data user untuk cek role dan postsCount
@@ -316,7 +317,7 @@ const postController = {
         vip: 5,
         god: 10,
       };
-      const privilegedRoles = ["owner", "admin"];
+      const privilegedRoles = ["owner", "admin", "mod", "god"];
       if (
         !privilegedRoles.includes(user.role) &&
         user.role in roleLimit &&
@@ -380,7 +381,9 @@ const postController = {
             description,
             category,
             mediaUrl: mediaUrl || null,
+            blurred: blurred !== undefined ? blurred : true, // Default to true if not provided
             content: generatedContent, // Use generated content
+            isPublished: privilegedRoles.includes(user.role), // Auto-publish for privileged roles
           },
         });
 
@@ -447,7 +450,8 @@ const postController = {
   updatePost: async (req, res) => {
     try {
       const { postId } = req.params;
-      const { title, description, category, mediaUrl, sections } = req.body;
+      const { title, description, category, mediaUrl, sections, blurred } =
+        req.body;
       const { userId } = req.user;
 
       // Check if post exists and belongs to user
@@ -477,6 +481,7 @@ const postController = {
             ...(description && { description }),
             ...(category && { category }),
             ...(mediaUrl !== undefined && { mediaUrl }),
+            ...(blurred !== undefined && { blurred }),
           },
         });
 

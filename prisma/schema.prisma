@@ -58,6 +58,7 @@ model Post {
   content       String? 
   category      String
   mediaUrl      String?
+  blurred       Boolean   @default(true)
   viewsCount    Int       @default(0)
   likesCount    Int       @default(0)
   sharesCount   Int       @default(0)
