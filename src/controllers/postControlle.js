@@ -82,7 +82,7 @@ const postController = {
       if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
         console.log(`Creating ${axiomData.length} posts...`);
         axiomPosts = axiomData.map((token, index) => ({
-          postId: `axiom-${
+          postId: `${
             token.tokenAddress || token.pairAddress || index
           }-${index}`,
           userId: "00000000-0000-0000-0000-000000000000",
@@ -131,9 +131,7 @@ const postController = {
           },
           sections: [
             {
-              sectionId: `axiom-section-${
-                token.tokenAddress || token.pairAddress || index
-              }`,
+              sectionId: `${token.tokenAddress || token.pairAddress || index}`,
               type: "code",
               content: (
                 token.tokenAddress ||
@@ -142,7 +140,7 @@ const postController = {
               ).substring(0, 50),
               src: null,
               order: 1,
-              postId: `axiom-${
+              postId: `botcoin-${
                 token.tokenAddress || token.pairAddress || index
               }-${index}`,
               createdAt: new Date().toISOString(),
@@ -208,7 +206,7 @@ const postController = {
     try {
       const { page = 1, limit = 20, category, userId } = req.query;
       const skip = (page - 1) * limit;
-      const currentUserId = req.user?.userId; // Get current user ID if authenticated
+      const currentUserId = req.user?.userId;
 
       const whereClause = {
         isDeleted: false,
@@ -216,8 +214,8 @@ const postController = {
         ...(userId && { userId }),
       };
 
-      // Fetch posts from database without pagination to combine with Axiom data
-      const posts = await prisma.post.findMany({
+      // Fetch ALL posts from database (without pagination initially)
+      const allDatabasePosts = await prisma.post.findMany({
         where: whereClause,
         include: {
           author: {
@@ -254,10 +252,13 @@ const postController = {
             },
           },
         },
+        orderBy: {
+          createdAt: "desc",
+        },
       });
 
       // Transform posts to include isLiked field
-      const transformedPosts = posts.map((post) => ({
+      const transformedPosts = allDatabasePosts.map((post) => ({
         ...post,
         isLiked: currentUserId ? post.likes?.length > 0 || false : false,
         likes: undefined, // Remove the likes array from response
@@ -277,7 +278,7 @@ const postController = {
       if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
         console.log(`Creating ${axiomData.length} Axiom posts...`);
         axiomPosts = axiomData.map((token, index) => ({
-          postId: `axiom-${
+          postId: `botcoin-${
             token.tokenAddress || token.pairAddress || index
           }-${index}`,
           userId: "00000000-0000-0000-0000-000000000000",
@@ -294,35 +295,41 @@ const postController = {
             0,
             20
           )}`,
-          category: "crypto",
+          category: "CRYPTO",
+          content: `Token: ${(
+            token.tokenName ||
+            token.tokenTicker ||
+            "Unknown"
+          ).substring(0, 50)}\nProtocol: ${(token.protocol || "N/A").substring(
+            0,
+            30
+          )}`,
           isPublished: true,
           isDeleted: false,
           createdAt: new Date(),
           updatedAt: new Date(),
           author: {
             userId: "00000000-0000-0000-0000-000000000000",
-            username: "Axiom",
-            profilePic: null,
-            posts: [],
+            username: "BOT COINS",
+            profilePic: "/admin",
+            posts: 0,
             createdAt: new Date(),
-            role: "user",
+            role: "member",
             star: 0,
           },
           sections: [
             {
-              sectionId: `axiom-section-${index}`,
-              postId: `axiom-${
+              sectionId: `botcoin-section-${index}`,
+              postId: `botcoin-${
                 token.tokenAddress || token.pairAddress || index
               }-${index}`,
-              type: "text",
-              content: `Token: ${token.tokenTicker || token.tokenName || "N/A"}
-Protocol: ${token.protocol || "N/A"}
-Address: ${token.tokenAddress || "N/A"}
-Pair Address: ${token.pairAddress || "N/A"}
-Market Cap: ${token.marketCap || "N/A"}
-Volume: ${token.volume || "N/A"}
-Price: ${token.price || "N/A"}
-Change: ${token.change || "N/A"}`,
+              type: "code",
+              content: (
+                token.tokenAddress ||
+                token.pairAddress ||
+                "Unknown Address"
+              ).substring(0, 50),
+              src: null,
               order: 1,
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -340,27 +347,27 @@ Change: ${token.change || "N/A"}`,
           blurred: true,
           viewsCount: token.volume || 0,
           likesCount: 0,
+          sharesCount: 0,
           isLiked: false,
         }));
       }
 
-      // Combine posts and axiom posts
+      // Combine ALL posts and axiom posts first
       const allPosts = [...transformedPosts, ...axiomPosts];
+      const totalPosts = allPosts.length;
 
       console.log(
         `Combined posts: ${allPosts.length} total (${transformedPosts.length} database + ${axiomPosts.length} axiom)`
       );
 
-      // Shuffle all posts randomly
+      // Shuffle all posts randomly but maintain consistency for pagination
       const shuffledPosts = allPosts.sort(() => Math.random() - 0.5);
 
-      // Apply pagination to shuffled results
+      // Apply pagination to the shuffled combined results
       const paginatedPosts = shuffledPosts.slice(skip, skip + parseInt(limit));
 
-      const totalPosts = allPosts.length;
-
       console.log(
-        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts`
+        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts out of ${totalPosts} total`
       );
 
       res.status(200).json({
