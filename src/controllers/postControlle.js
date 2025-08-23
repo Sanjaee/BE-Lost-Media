@@ -8,79 +8,20 @@ const postController = {
     try {
       const { page = 1, limit = 20, category, userId } = req.query;
       const skip = (page - 1) * limit;
-      const currentUserId = req.user?.userId;
 
-      // Fetch posts from database
-      const whereClause = {
-        isDeleted: false,
-        ...(category && { category }),
-        ...(userId && { userId }),
-      };
-
-      const posts = await prisma.post.findMany({
-        where: whereClause,
-        include: {
-          author: {
-            select: {
-              userId: true,
-              username: true,
-              profilePic: true,
-              posts: true,
-              createdAt: true,
-              role: true,
-              star: true,
-            },
-          },
-          sections: {
-            orderBy: {
-              order: "asc",
-            },
-          },
-          comments: {
-            where: { isDeleted: false },
-            select: { commentId: true },
-          },
-          ...(currentUserId && {
-            likes: {
-              where: {
-                userId: currentUserId,
-              },
-            },
-          }),
-          _count: {
-            select: {
-              comments: true,
-              likes: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip: parseInt(skip),
-        take: parseInt(limit),
-      });
-
-      // Transform posts to include isLiked field
-      const transformedPosts = posts.map((post) => ({
-        ...post,
-        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
-        likes: undefined, // Remove the likes array from response
-      }));
-
-      // Fetch data
+      // Fetch Axiom data only - no database queries
       let axiomData = null;
       try {
         axiomData = await axiomController.fetchAxiomData();
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error fetching Axiom data:", error);
         axiomData = null;
       }
 
       // Create Axiom posts if data is available
       let axiomPosts = [];
       if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
-        console.log(`Creating ${axiomData.length} posts...`);
+        console.log(`Creating ${axiomData.length} Axiom posts...`);
         axiomPosts = axiomData.map((token, index) => ({
           postId: `${
             token.tokenAddress || token.pairAddress || index
@@ -155,24 +96,15 @@ const postController = {
           source: "axiom",
         }));
       } else {
-        console.log(
-          "No Axiom data available, proceeding with database posts only"
-        );
+        console.log("No Axiom data available, returning empty result");
       }
 
-      // Combine posts and axiom posts
-      const allPosts = [...transformedPosts, ...axiomPosts];
-
-      // Shuffle all posts randomly
-      const shuffledPosts = allPosts.sort(() => Math.random() - 0.5);
-
-      // Apply pagination to shuffled results
-      const paginatedPosts = shuffledPosts.slice(skip, skip + parseInt(limit));
-
-      const totalPosts = allPosts.length;
+      // Apply pagination to Axiom posts only
+      const paginatedPosts = axiomPosts.slice(skip, skip + parseInt(limit));
+      const totalPosts = axiomPosts.length;
 
       console.log(
-        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts`
+        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} Axiom posts out of ${totalPosts} total`
       );
 
       res.status(200).json({
@@ -185,17 +117,17 @@ const postController = {
           itemsPerPage: parseInt(limit),
         },
         sources: {
-          database: transformedPosts.length,
+          database: 0,
           axiom: axiomPosts.length,
-          total: allPosts.length,
+          total: axiomPosts.length,
         },
       });
-      console.log(allPosts);
+      console.log("Axiom posts only:", axiomPosts);
     } catch (error) {
       console.error("Error in getAllPostsWithAxiom:", error);
       res.status(500).json({
         success: false,
-        message: "Failed to fetch posts with Axiom data",
+        message: "Failed to fetch Axiom posts",
         error: error.message,
       });
     }
@@ -579,11 +511,19 @@ const postController = {
         });
       }
 
-      // Increment view count
-      await prisma.post.update({
-        where: { postId },
-        data: { viewsCount: { increment: 1 } },
-      });
+      // Increment view count safely
+      try {
+        await prisma.post.update({
+          where: { postId },
+          data: { viewsCount: { increment: 1 } },
+        });
+      } catch (viewError) {
+        // If view count increment fails, log it but don't fail the entire request
+        console.warn(
+          `Failed to increment view count for post ${postId}:`,
+          viewError.message
+        );
+      }
 
       res.status(200).json({
         success: true,
@@ -1041,10 +981,30 @@ const postController = {
   incrementViewCount: async (req, res) => {
     try {
       const { postId } = req.params;
+
+      // Check if post exists in database first
+      const post = await prisma.post.findFirst({
+        where: { postId, isDeleted: false },
+        select: { postId: true },
+      });
+
+      // If post doesn't exist in database, it might be an Axiom post
+      if (!post) {
+        // For Axiom posts, we can't increment view count in database
+        // Just return success without error
+        return res.status(200).json({
+          success: true,
+          message: "View count not incremented for Axiom posts",
+          isAxiomPost: true,
+        });
+      }
+
+      // Increment view count for database posts
       await prisma.post.update({
         where: { postId },
         data: { viewsCount: { increment: 1 } },
       });
+
       res.status(200).json({ success: true });
     } catch (error) {
       res.status(500).json({
