@@ -8,6 +8,7 @@ const authRoutes = require("./src/routes/authRoutes");
 const postRoutes = require("./src/routes/postRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
 const paymentRoutes = require("./src/routes/paymentRoutes");
+const axiomRoutes = require("./src/routes/axiomRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -61,6 +62,7 @@ app.use("/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/axiom", axiomRoutes);
 
 // Health check route
 app.get("/health", (req, res) => {

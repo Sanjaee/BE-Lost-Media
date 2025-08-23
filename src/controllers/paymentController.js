@@ -1,4 +1,4 @@
-const dotenv = require("dotenv");
+require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const crypto = require("crypto");
 const axios = require("axios");
@@ -26,11 +26,16 @@ function mapMidtransStatusToPrisma(status) {
   }
 }
 
-dotenv.config();
-
 // Konfigurasi Midtrans
-const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY;
-const MIDTRANS_BASE_URL = "https://api.sandbox.midtrans.com/v2";
+const MIDTRANS_SERVER_KEY =
+  process.env.NODE_ENV === "production"
+    ? process.env.MIDTRANS_SERVER_KEY_PROD
+    : process.env.MIDTRANS_SERVER_KEY_SANDBOX;
+
+const MIDTRANS_BASE_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://api.midtrans.com/v2"
+    : "https://api.sandbox.midtrans.com/v2";
 
 class MidtransController {
   // Get all roles (for frontend UI)

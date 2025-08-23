@@ -1,14 +1,16 @@
 const prisma = require("../utils/prisma");
 const notificationController = require("./notificationController");
+const axiomController = require("./axiomController");
 
 const postController = {
-  // Get all posts with ordered content sections
-  getAllPosts: async (req, res) => {
+  // Function to combine getAllPosts with data
+  getAllPostsWithAxiom: async (req, res) => {
     try {
-      const { page = 1, limit = 10, category, userId } = req.query;
+      const { page = 1, limit = 20, category, userId } = req.query;
       const skip = (page - 1) * limit;
-      const currentUserId = req.user?.userId; // Get current user ID if authenticated
+      const currentUserId = req.user?.userId;
 
+      // Fetch posts from database
       const whereClause = {
         isDeleted: false,
         ...(category && { category }),
@@ -66,22 +68,318 @@ const postController = {
         likes: undefined, // Remove the likes array from response
       }));
 
-      const totalPosts = await prisma.post.count({
-        where: whereClause,
-      });
+      // Fetch data
+      let axiomData = null;
+      try {
+        axiomData = await axiomController.fetchAxiomData();
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        axiomData = null;
+      }
+
+      // Create Axiom posts if data is available
+      let axiomPosts = [];
+      if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
+        console.log(`Creating ${axiomData.length} posts...`);
+        axiomPosts = axiomData.map((token, index) => ({
+          postId: `axiom-${
+            token.tokenAddress || token.pairAddress || index
+          }-${index}`,
+          userId: "00000000-0000-0000-0000-000000000000",
+          title: (
+            token.tokenName ||
+            token.tokenTicker ||
+            "Unknown Token"
+          ).substring(0, 100),
+          description: `Token: ${(
+            token.tokenTicker ||
+            token.tokenName ||
+            "N/A"
+          ).substring(0, 30)} | Protocol: ${(token.protocol || "N/A").substring(
+            0,
+            20
+          )}`,
+          content: `Token: ${(
+            token.tokenName ||
+            token.tokenTicker ||
+            "Unknown"
+          ).substring(0, 50)}\nProtocol: ${(token.protocol || "N/A").substring(
+            0,
+            30
+          )}`,
+          category: "CRYPTO",
+          mediaUrl:
+            token.tokenImage ||
+            "https://via.placeholder.com/400x200?text=Token+Image",
+          blurred: true,
+          viewsCount: 0,
+          likesCount: 0,
+          sharesCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isDeleted: false,
+          isPublished: true,
+          isLiked: false,
+          author: {
+            userId: "00000000-0000-0000-0000-000000000000",
+            username: "BOT COINS",
+            profilePic: "/admin",
+            posts: 0,
+            createdAt: new Date().toISOString(),
+            role: "member",
+            star: 0,
+          },
+          sections: [
+            {
+              sectionId: `axiom-section-${
+                token.tokenAddress || token.pairAddress || index
+              }`,
+              type: "code",
+              content: (
+                token.tokenAddress ||
+                token.pairAddress ||
+                "Unknown Address"
+              ).substring(0, 50),
+              src: null,
+              order: 1,
+              postId: `axiom-${
+                token.tokenAddress || token.pairAddress || index
+              }-${index}`,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          _count: {
+            comments: 0,
+            likes: 0,
+          },
+          comments: [],
+          source: "axiom",
+        }));
+      } else {
+        console.log(
+          "No Axiom data available, proceeding with database posts only"
+        );
+      }
+
+      // Combine posts and axiom posts
+      const allPosts = [...transformedPosts, ...axiomPosts];
+
+      // Shuffle all posts randomly
+      const shuffledPosts = allPosts.sort(() => Math.random() - 0.5);
+
+      // Apply pagination to shuffled results
+      const paginatedPosts = shuffledPosts.slice(skip, skip + parseInt(limit));
+
+      const totalPosts = allPosts.length;
+
+      console.log(
+        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts`
+      );
 
       res.status(200).json({
         success: true,
-        data: transformedPosts,
+        data: paginatedPosts,
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalPosts / limit),
           totalItems: totalPosts,
           itemsPerPage: parseInt(limit),
         },
+        sources: {
+          database: transformedPosts.length,
+          axiom: axiomPosts.length,
+          total: allPosts.length,
+        },
+      });
+      console.log(allPosts);
+    } catch (error) {
+      console.error("Error in getAllPostsWithAxiom:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch posts with Axiom data",
+        error: error.message,
+      });
+    }
+  },
+
+  // Get all posts with ordered content sections
+  getAllPosts: async (req, res) => {
+    try {
+      const { page = 1, limit = 20, category, userId } = req.query;
+      const skip = (page - 1) * limit;
+      const currentUserId = req.user?.userId; // Get current user ID if authenticated
+
+      const whereClause = {
+        isDeleted: false,
+        ...(category && { category }),
+        ...(userId && { userId }),
+      };
+
+      // Fetch posts from database without pagination to combine with Axiom data
+      const posts = await prisma.post.findMany({
+        where: whereClause,
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              posts: true,
+              createdAt: true,
+              role: true,
+              star: true,
+            },
+          },
+          sections: {
+            orderBy: {
+              order: "asc",
+            },
+          },
+          comments: {
+            where: { isDeleted: false },
+            select: { commentId: true },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: {
+                userId: currentUserId,
+              },
+            },
+          }),
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+        },
+      });
+
+      // Transform posts to include isLiked field
+      const transformedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined, // Remove the likes array from response
+      }));
+
+      // Fetch Axiom data
+      let axiomData = null;
+      try {
+        axiomData = await axiomController.fetchAxiomData();
+      } catch (error) {
+        console.error("Error fetching Axiom data:", error);
+        axiomData = null;
+      }
+
+      // Create Axiom posts if data is available
+      let axiomPosts = [];
+      if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
+        console.log(`Creating ${axiomData.length} Axiom posts...`);
+        axiomPosts = axiomData.map((token, index) => ({
+          postId: `axiom-${
+            token.tokenAddress || token.pairAddress || index
+          }-${index}`,
+          userId: "00000000-0000-0000-0000-000000000000",
+          title: (
+            token.tokenName ||
+            token.tokenTicker ||
+            "Unknown Token"
+          ).substring(0, 100),
+          description: `Token: ${(
+            token.tokenTicker ||
+            token.tokenName ||
+            "N/A"
+          ).substring(0, 30)} | Protocol: ${(token.protocol || "N/A").substring(
+            0,
+            20
+          )}`,
+          category: "crypto",
+          isPublished: true,
+          isDeleted: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          author: {
+            userId: "00000000-0000-0000-0000-000000000000",
+            username: "Axiom",
+            profilePic: null,
+            posts: [],
+            createdAt: new Date(),
+            role: "user",
+            star: 0,
+          },
+          sections: [
+            {
+              sectionId: `axiom-section-${index}`,
+              postId: `axiom-${
+                token.tokenAddress || token.pairAddress || index
+              }-${index}`,
+              type: "text",
+              content: `Token: ${token.tokenTicker || token.tokenName || "N/A"}
+Protocol: ${token.protocol || "N/A"}
+Address: ${token.tokenAddress || "N/A"}
+Pair Address: ${token.pairAddress || "N/A"}
+Market Cap: ${token.marketCap || "N/A"}
+Volume: ${token.volume || "N/A"}
+Price: ${token.price || "N/A"}
+Change: ${token.change || "N/A"}`,
+              order: 1,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ],
+          comments: [],
+          _count: {
+            comments: 0,
+            likes: 0,
+          },
+          source: "axiom",
+          mediaUrl:
+            token.tokenImage ||
+            "https://via.placeholder.com/400x200?text=Token+Image",
+          blurred: true,
+          viewsCount: token.volume || 0,
+          likesCount: 0,
+          isLiked: false,
+        }));
+      }
+
+      // Combine posts and axiom posts
+      const allPosts = [...transformedPosts, ...axiomPosts];
+
+      console.log(
+        `Combined posts: ${allPosts.length} total (${transformedPosts.length} database + ${axiomPosts.length} axiom)`
+      );
+
+      // Shuffle all posts randomly
+      const shuffledPosts = allPosts.sort(() => Math.random() - 0.5);
+
+      // Apply pagination to shuffled results
+      const paginatedPosts = shuffledPosts.slice(skip, skip + parseInt(limit));
+
+      const totalPosts = allPosts.length;
+
+      console.log(
+        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts`
+      );
+
+      res.status(200).json({
+        success: true,
+        data: paginatedPosts,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPosts / limit),
+          totalItems: totalPosts,
+          itemsPerPage: parseInt(limit),
+        },
+        sources: {
+          database: transformedPosts.length,
+          axiom: axiomPosts.length,
+          total: allPosts.length,
+        },
       });
     } catch (error) {
-      res.status(500).json({
+      res.status(200).json({
         success: false,
         message: "Failed to fetch posts",
         error: error.message,
@@ -92,7 +390,7 @@ const postController = {
   // Search all published posts (lightweight search for everyone)
   searchAllPosts: async (req, res) => {
     try {
-      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const { q, category, author, page = 1, limit = 20 } = req.query;
       const skip = (page - 1) * limit;
       const currentUserId = req.user?.userId; // Get current user ID if authenticated
 
@@ -601,7 +899,7 @@ const postController = {
   getUserPosts: async (req, res) => {
     try {
       const { userId } = req.user;
-      const { page = 1, limit = 10, includeDeleted = false } = req.query;
+      const { page = 1, limit = 20, includeDeleted = false } = req.query;
       const skip = (page - 1) * limit;
 
       const whereClause = {
@@ -906,7 +1204,7 @@ const postController = {
           .json({ error: "Forbidden: Only staff can access this endpoint" });
       }
 
-      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const { q, category, author, page = 1, limit = 20 } = req.query;
       const skip = (page - 1) * limit;
       const currentUserId = req.user?.userId;
 
@@ -1202,7 +1500,7 @@ const postController = {
           .json({ error: "Forbidden: Only staff can access this endpoint" });
       }
 
-      const { q, category, author, page = 1, limit = 10 } = req.query;
+      const { q, category, author, page = 1, limit = 20 } = req.query;
       const skip = (page - 1) * limit;
       const currentUserId = req.user?.userId;
 
