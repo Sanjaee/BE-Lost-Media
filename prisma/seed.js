@@ -5,9 +5,21 @@ const crypto = require("crypto");
 
 /**
  * Usage:
- *  node prisma/seed.js                 -> seed default (no reset)
+ *  node prisma/seed.js                 -> seed default (creates DUMMY category posts)
  *  node prisma/seed.js --reset         -> delete dummy-post-* & dummy-section-* then seed
+ *  node prisma/seed.js --deleteDummy   -> delete posts with category 'DUMMY' only (then exit)
  *  node prisma/seed.js --deleteAll     -> delete ALL posts & contentSections (then exit)
+ *
+ * NPM Scripts:
+ *  npm run seed                        -> create dummy posts
+ *  npm run seed:reset                  -> reset and create dummy posts
+ *  npm run seed:deleteDummy            -> delete only DUMMY category posts (RECOMMENDED)
+ *  npm run seed:delete                 -> delete ALL posts (DANGEROUS)
+ *
+ * ⚠️  IMPORTANT: Use "seed:deleteDummy" WITHOUT SPACE between "seed" and ":deleteDummy"
+ *     WRONG: npm run seed :deleteDummy
+ *     RIGHT: npm run seed:deleteDummy
+ *
  *  Environment:
  *    SEED_TOTAL   -> number of posts to create (default 1000)
  *    SEED_USER_ID -> single user id to use (if you prefer single user); otherwise script uses provided userIds intersection
@@ -17,11 +29,112 @@ async function main() {
   const args = process.argv.slice(2);
   const shouldReset = args.includes("--reset");
   const shouldDeleteAll = args.includes("--deleteAll");
+  const shouldDeleteDummy = args.includes("--deleteDummy");
+
+  // Check for common mistake commands
+  if (args.includes(":deleteDummy")) {
+    console.error("❌ Invalid command: ':deleteDummy'");
+    console.error("💡 Correct usage: npm run seed:deleteDummy (without space)");
+    console.error("   or: node prisma/seed.js --deleteDummy");
+    process.exit(1);
+  }
 
   console.log("🌱 Starting seed...");
 
+  // Debug: Show what arguments were received
+  if (args.length > 0) {
+    console.log(`🔧 Arguments received: ${args.join(", ")}`);
+  }
+
   // ----- configuration -----
-  const categories = ["TECH", "CRYPTO", "GAMING", "LIFESTYLE", "EDUCATION"];
+  const categories = ["DUMMY"]; // Using single DUMMY category for easy cleanup
+  const originalCategories = [
+    "TECH",
+    "CRYPTO",
+    "GAMING",
+    "LIFESTYLE",
+    "EDUCATION",
+  ]; // Keep for reference
+
+  // ----- deleteDummy mode (early exit) -----
+  if (shouldDeleteDummy) {
+    console.log(
+      "🗑️  --deleteDummy flag detected. Deleting posts with category 'DUMMY'..."
+    );
+
+    try {
+      // Delete posts with category DUMMY and their related data using transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // First, find all DUMMY posts
+        const dummyPosts = await tx.post.findMany({
+          where: { category: "DUMMY" },
+          select: { postId: true },
+        });
+
+        if (dummyPosts.length === 0) {
+          return { message: "No DUMMY posts found to delete.", count: 0 };
+        }
+
+        const dummyPostIds = dummyPosts.map((p) => p.postId);
+        console.log(
+          `   🎯 Found ${dummyPosts.length} DUMMY posts to delete...`
+        );
+
+        // Delete in proper order to avoid foreign key constraint issues
+        // 1. Delete content sections
+        const delSections = await tx.contentSection.deleteMany({
+          where: { postId: { in: dummyPostIds } },
+        });
+        console.log(`   - contentSections deleted: ${delSections.count}`);
+
+        // 2. Delete comments (including nested comments)
+        const delComments = await tx.comment.deleteMany({
+          where: { postId: { in: dummyPostIds } },
+        });
+        console.log(`   - comments deleted: ${delComments.count}`);
+
+        // 3. Delete likes
+        const delLikes = await tx.like.deleteMany({
+          where: { postId: { in: dummyPostIds } },
+        });
+        console.log(`   - likes deleted: ${delLikes.count}`);
+
+        // 4. Finally delete the posts
+        const delPosts = await tx.post.deleteMany({
+          where: { category: "DUMMY" },
+        });
+        console.log(`   - DUMMY posts deleted: ${delPosts.count}`);
+
+        return {
+          message: "deleteDummy completed successfully",
+          count: delPosts.count,
+          details: {
+            posts: delPosts.count,
+            sections: delSections.count,
+            comments: delComments.count,
+            likes: delLikes.count,
+          },
+        };
+      });
+
+      if (result.count === 0) {
+        console.log("   ℹ️  No DUMMY posts found to delete.");
+      } else {
+        console.log(`✅ ${result.message}`);
+        console.log(`📊 Deletion summary:`);
+        console.log(`   - Posts: ${result.details.posts}`);
+        console.log(`   - Sections: ${result.details.sections}`);
+        console.log(`   - Comments: ${result.details.comments}`);
+        console.log(`   - Likes: ${result.details.likes}`);
+      }
+
+      console.log("🔌 Database connection will be closed...");
+      return; // This will exit the main function and go to finally block
+    } catch (err) {
+      console.error("❌ deleteDummy failed:", err);
+      process.exit(1);
+    }
+  }
 
   // Get all existing users from database randomly (exclude owner role)
   console.log("🔍 Fetching existing users from database (excluding owners)...");
@@ -72,17 +185,26 @@ async function main() {
     }
   }
 
-  // ----- cleanup dummy data automatically -----
+  // ----- cleanup dummy data automatically (by category and ID pattern) -----
   console.log("🧹 Cleaning up existing dummy data...");
   try {
+    // Delete by category "DUMMY" first
+    const deletedPostsByCategory = await prisma.post.deleteMany({
+      where: { category: "DUMMY" },
+    });
+    console.log(
+      `   ✅ Cleaned posts by category DUMMY: ${deletedPostsByCategory.count}`
+    );
+
+    // Also cleanup by ID pattern (for backward compatibility)
     const deletedSections = await prisma.contentSection.deleteMany({
       where: { sectionId: { startsWith: "dummy-section-" } },
     });
     const deletedPosts = await prisma.post.deleteMany({
       where: { postId: { startsWith: "dummy-post-" } },
     });
-    console.log(`   ✅ Cleaned dummy sections: ${deletedSections.count}`);
-    console.log(`   ✅ Cleaned dummy posts: ${deletedPosts.count}`);
+    console.log(`   ✅ Cleaned dummy sections by ID: ${deletedSections.count}`);
+    console.log(`   ✅ Cleaned dummy posts by ID: ${deletedPosts.count}`);
   } catch (err) {
     console.error("❌ Cleanup failed:", err);
     return;
@@ -149,7 +271,9 @@ async function main() {
   let failedPosts = 0;
 
   for (let i = 1; i <= TOTAL; i++) {
-    const category = categories[(i - 1) % categories.length];
+    const category = categories[(i - 1) % categories.length]; // Will always be "DUMMY"
+    const topicCategory =
+      originalCategories[(i - 1) % originalCategories.length]; // For variation in content
     const userId = useUserIds[(i - 1) % useUserIds.length];
 
     // unique ids to avoid unique constraint
@@ -161,10 +285,10 @@ async function main() {
         data: {
           postId,
           userId,
-          title: `Dummy Post ${i} - ${category} Content`,
-          description: `This is a dummy post for testing purposes. Category: ${category}`,
-          content: `This is the content of dummy post ${i}. It contains some sample text to simulate real post content. Category: ${category}`,
-          category,
+          title: `Dummy Post ${i} - ${topicCategory} Content`,
+          description: `This is a dummy post for testing purposes. Topic: ${topicCategory}. Category: ${category}`,
+          content: `This is the content of dummy post ${i}. It contains some sample text to simulate real post content. Topic: ${topicCategory}. Category: ${category}`,
+          category, // Always "DUMMY" for easy cleanup
           mediaUrl: `/bg.png`,
           blurred: false,
           viewsCount: Math.floor(Math.random() * 1000),
@@ -184,7 +308,7 @@ async function main() {
           sectionId,
           postId: newPost.postId,
           type: "text",
-          content: `This is the content section for dummy post ${i}.`,
+          content: `This is the content section for dummy post ${i}. Topic: ${topicCategory}. This post is marked as category ${category} for easy cleanup.`,
           src: null,
           order: 1,
           createdAt: new Date(),
@@ -196,7 +320,7 @@ async function main() {
       if (i % 50 === 0 || i === TOTAL) {
         const currentUser = existingUsers.find((u) => u.userId === userId);
         console.log(
-          `✅ Created ${i}/${TOTAL} posts (current user: ${
+          `✅ Created ${i}/${TOTAL} DUMMY posts (topic: ${topicCategory}, user: ${
             currentUser?.username || "unknown"
           } [${currentUser?.role || "unknown"}])`
         );
@@ -214,9 +338,13 @@ async function main() {
 
   console.log("\n🎉 Seed completed!");
   console.log("📊 Summary:");
-  console.log(`   ✅ Created: ${createdPosts} posts`);
+  console.log(`   ✅ Created: ${createdPosts} DUMMY posts`);
   console.log(`   ❌ Failed: ${failedPosts} posts`);
   console.log(`   📝 Total attempted: ${TOTAL}`);
+  console.log(`   🏷️  All posts created with category: DUMMY`);
+  console.log(
+    `   🗑️  To delete all dummy posts, run: node prisma/seed.js --deleteDummy`
+  );
   if (shouldReset) console.log("🔄 Database was reset before seeding");
 }
 

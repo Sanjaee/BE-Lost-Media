@@ -9,7 +9,9 @@
     "dev": "nodemon index.js",
     "postinstall": "prisma generate",
     "seed": "node prisma/seed.js",
-    "seed:reset": "node prisma/seed.js --reset"
+    "seed:reset": "node prisma/seed.js --reset",
+    "seed:delete": "node prisma/seed.js --deleteAll",
+    "seed:deleteDummy": "node prisma/seed.js --deleteDummy"
   },
   "author": "",
   "license": "ISC",

@@ -354,11 +354,65 @@ const postController = {
     }
   },
 
-  // Search all published posts (lightweight search for everyone)
+  // Search all published posts with limit-based pagination
   searchAllPosts: async (req, res) => {
     try {
-      const { q, category, author } = req.query;
+      const { q, category, author, limit, offset = 0 } = req.query;
+
+      // Validasi wajib parameter limit untuk mencegah memory overload
+      if (!limit) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' is required. Example: ?q=search&limit=20&offset=0",
+          example: "/api/posts/search?q=example&limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+
+      // Validasi range limit
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' must be a positive number (minimum 1)",
+          example: "/api/posts/search?q=example&limit=20&offset=0",
+        });
+      }
+
+      if (parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' cannot exceed 100 to prevent memory issues",
+          example: "/api/posts/search?q=example&limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      // Validasi offset
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'offset' must be a non-negative number",
+          example: "/api/posts/search?q=example&limit=20&offset=0",
+        });
+      }
+
       const currentUserId = req.user?.userId; // Get current user ID if authenticated
+
+      // Log untuk debugging
+      console.log(
+        `🔍 searchAllPosts called - Query: "${q || ""}", Category: "${
+          category || ""
+        }", Author: "${
+          author || ""
+        }", Limit: ${parsedLimit}, Offset: ${parsedOffset}, User: ${
+          currentUserId || "Anonymous"
+        }`
+      );
 
       // Build search conditions
       const whereClause = {
@@ -409,7 +463,13 @@ const postController = {
         };
       }
 
-      // Fetch ALL posts without pagination limits
+      console.log(
+        `🔍 Search conditions: ${JSON.stringify(
+          whereClause
+        )}, skip=${parsedOffset}, take=${parsedLimit}`
+      );
+
+      // Fetch posts with pagination
       const posts = await prisma.post.findMany({
         where: whereClause,
         include: {
@@ -436,8 +496,11 @@ const postController = {
           },
         },
         orderBy: { createdAt: "desc" },
-        // Removed skip and take to get all posts
+        skip: parsedOffset,
+        take: parsedLimit,
       });
+
+      console.log(`✅ Search query completed: ${posts.length} posts retrieved`);
 
       // Transform posts to include isLiked field
       const transformedPosts = posts.map((post) => ({
@@ -446,17 +509,37 @@ const postController = {
         likes: undefined, // Remove the likes array from response
       }));
 
+      // Get total count for pagination
+      const totalCount = await prisma.post.count({
+        where: whereClause,
+      });
+
+      console.log(
+        `✅ Search response: ${transformedPosts.length}/${totalCount} posts, offset=${parsedOffset}, limit=${parsedLimit}`
+      );
+
       res.status(200).json({
         success: true,
         data: transformedPosts,
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          totalItems: totalCount,
+          returned: transformedPosts.length,
+          hasMore: parsedOffset + transformedPosts.length < totalCount,
+        },
         count: transformedPosts.length,
-        totalCount: transformedPosts.length,
+        totalCount: totalCount,
         searchParams: {
           query: q || "",
           category: category || "",
           author: author || "",
         },
-        message: "All matching posts retrieved without pagination limits",
+        meta: {
+          endpoint: "/api/posts/search",
+          queryTime: new Date().toISOString(),
+          note: "Search results with pagination - use limit and offset parameters",
+        },
       });
     } catch (error) {
       console.error("Error searching posts:", error);
@@ -1403,9 +1486,52 @@ const postController = {
     }
   },
 
-  // Get all published posts (only for certain roles)
+  // Get all published posts with pagination (only for certain roles)
   getPublishedPosts: async (req, res) => {
     try {
+      const { limit, offset = 0 } = req.query;
+
+      // Validasi wajib parameter limit untuk mencegah memory overload
+      if (!limit) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' is required. Example: ?limit=20&offset=0",
+          example: "/api/posts/manage/published?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+
+      // Validasi range limit
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' must be a positive number (minimum 1)",
+          example: "/api/posts/manage/published?limit=20&offset=0",
+        });
+      }
+
+      if (parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' cannot exceed 100 to prevent memory issues",
+          example: "/api/posts/manage/published?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      // Validasi offset
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'offset' must be a non-negative number",
+          example: "/api/posts/manage/published?limit=20&offset=0",
+        });
+      }
+
       const allowedRoles = ["owner", "admin"];
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
@@ -1417,12 +1543,40 @@ const postController = {
 
       const currentUserId = req.user?.userId;
 
-      const posts = await prisma.post.findMany({
-        where: {
+      // Log untuk debugging
+      console.log(
+        `📊 getPublishedPosts called - Limit: ${parsedLimit}, Offset: ${parsedOffset}, User: ${
+          currentUserId || "Anonymous"
+        }`
+      );
+
+      const whereClause = {
+        isPublished: true,
+        isDeleted: false,
+      };
+
+      // Optimized database query - only essential fields
+      console.log(
+        `🔍 Querying published posts: skip=${parsedOffset}, take=${parsedLimit}`
+      );
+
+      const publishedPosts = await prisma.post.findMany({
+        where: whereClause,
+        select: {
+          // Essential post fields only
+          postId: true,
+          userId: true,
+          title: true,
+          description: true,
+          category: true,
+          mediaUrl: true,
+          blurred: true,
+          viewsCount: true,
+          likesCount: true,
+          sharesCount: true,
+          createdAt: true,
           isPublished: true,
-          isDeleted: false,
-        },
-        include: {
+          // Essential author fields only
           author: {
             select: {
               userId: true,
@@ -1431,43 +1585,85 @@ const postController = {
               role: true,
             },
           },
+          // Limited sections for performance
           sections: {
-            orderBy: { order: "asc" },
-          },
-          ...(currentUserId && {
-            likes: {
-              where: {
-                userId: currentUserId,
-              },
+            select: {
+              sectionId: true,
+              type: true,
+              content: true,
+              src: true,
+              order: true,
+              imageDetail: true,
             },
-          }),
+            orderBy: { order: "asc" },
+            take: 3, // Only first 3 sections for list view
+          },
+          // Quick count only
           _count: {
             select: {
               comments: true,
               likes: true,
             },
           },
+          // User like status if authenticated
+          ...(currentUserId && {
+            likes: {
+              where: { userId: currentUserId },
+              select: { likeId: true },
+              take: 1,
+            },
+          }),
         },
         orderBy: { createdAt: "desc" },
+        skip: parsedOffset,
+        take: parsedLimit,
       });
 
-      // Transform posts to include isLiked field
-      const transformedPosts = posts.map((post) => ({
+      console.log(
+        `✅ Published posts query completed: ${publishedPosts.length} posts retrieved`
+      );
+
+      // Transform posts - minimal processing
+      const transformedPosts = publishedPosts.map((post) => ({
         ...post,
         isLiked: currentUserId ? post.likes?.length > 0 || false : false,
-        likes: undefined, // Remove the likes array from response
+        likes: undefined, // Remove likes array from response
       }));
 
-      res.status(200).json({
+      // Quick count query
+      const totalPublishedPosts = await prisma.post.count({
+        where: whereClause,
+      });
+
+      console.log(
+        `✅ Response: ${transformedPosts.length}/${totalPublishedPosts} published posts, offset=${parsedOffset}, limit=${parsedLimit}`
+      );
+
+      // Send response immediately - no additional processing
+      return res.status(200).json({
         success: true,
         data: transformedPosts,
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          totalItems: totalPublishedPosts,
+          returned: transformedPosts.length,
+          hasMore: parsedOffset + transformedPosts.length < totalPublishedPosts,
+        },
         count: transformedPosts.length,
+        totalCount: totalPublishedPosts,
+        meta: {
+          endpoint: "/api/posts/manage/published",
+          queryTime: new Date().toISOString(),
+          note: "Published posts with pagination - use limit and offset parameters",
+        },
       });
     } catch (error) {
       console.error("Error fetching published posts:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch published posts",
+        error: error.message,
       });
     }
   },
