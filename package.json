@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon index.js",
     "dev": "nodemon index.js",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed": "node prisma/seed.js",
+    "seed:reset": "node prisma/seed.js --reset"
   },
   "author": "",
   "license": "ISC",

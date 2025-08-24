@@ -3,11 +3,51 @@ const notificationController = require("./notificationController");
 const axiomController = require("./axiomController");
 
 const postController = {
-  // Function to combine getAllPosts with data
+  // Function to combine getAllPosts with data - limit-based pagination
   getAllPostsWithAxiom: async (req, res) => {
     try {
-      const { page = 1, limit = 20, category, userId } = req.query;
-      const skip = (page - 1) * limit;
+      const { limit, offset = 0, category, userId } = req.query;
+
+      // Validasi wajib parameter limit untuk mencegah memory overload
+      if (!limit) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' is required. Example: ?limit=20&offset=0",
+          example: "/api/posts/axiom?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+
+      // Validasi range limit
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' must be a positive number (minimum 1)",
+          example: "/api/posts/axiom?limit=20&offset=0",
+        });
+      }
+
+      if (parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' cannot exceed 100 to prevent memory issues",
+          example: "/api/posts/axiom?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      // Validasi offset
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'offset' must be a non-negative number",
+          example: "/api/posts/axiom?limit=20&offset=0",
+        });
+      }
 
       // Fetch Axiom data only - no database queries
       let axiomData = null;
@@ -99,27 +139,31 @@ const postController = {
         console.log("No Axiom data available, returning empty result");
       }
 
-      // Apply pagination to Axiom posts only
-      const paginatedPosts = axiomPosts.slice(skip, skip + parseInt(limit));
+      // Apply limit-based pagination to Axiom posts only
+      const paginatedPosts = axiomPosts.slice(
+        parsedOffset,
+        parsedOffset + parsedLimit
+      );
       const totalPosts = axiomPosts.length;
 
       console.log(
-        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} Axiom posts out of ${totalPosts} total`
+        `✅ Axiom API Success - Offset: ${parsedOffset}, Limit: ${parsedLimit}, Returned: ${paginatedPosts.length} of ${totalPosts} total Axiom posts`
       );
 
       res.status(200).json({
         success: true,
         data: paginatedPosts,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalPosts / limit),
+          offset: parsedOffset,
+          limit: parsedLimit,
           totalItems: totalPosts,
-          itemsPerPage: parseInt(limit),
+          returned: paginatedPosts.length,
+          hasMore: parsedOffset + paginatedPosts.length < totalPosts,
         },
         sources: {
           database: 0,
-          axiom: axiomPosts.length,
-          total: axiomPosts.length,
+          axiom: paginatedPosts.length,
+          total: paginatedPosts.length,
         },
       });
       console.log("Axiom posts only:", axiomPosts);
@@ -133,12 +177,60 @@ const postController = {
     }
   },
 
-  // Get all posts with ordered content sections
+  // Get all posts with ordered content sections - limit-based pagination (DATABASE ONLY)
   getAllPosts: async (req, res) => {
     try {
-      const { page = 1, limit = 20, category, userId } = req.query;
-      const skip = (page - 1) * limit;
+      const { limit, offset = 0, category, userId } = req.query;
+
+      // Validasi wajib parameter limit untuk mencegah memory overload
+      if (!limit) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' is required. Example: ?limit=20&offset=0",
+          example: "/api/posts?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+
+      // Validasi range limit
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' must be a positive number (minimum 1)",
+          example: "/api/posts?limit=20&offset=0",
+        });
+      }
+
+      if (parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' cannot exceed 100 to prevent memory issues",
+          example: "/api/posts?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      // Validasi offset
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'offset' must be a non-negative number",
+          example: "/api/posts?limit=20&offset=0",
+        });
+      }
+
       const currentUserId = req.user?.userId;
+
+      // Log untuk debugging
+      console.log(
+        `📊 getAllPosts called - Limit: ${parsedLimit}, Offset: ${parsedOffset}, User: ${
+          currentUserId || "Anonymous"
+        }`
+      );
 
       const whereClause = {
         isDeleted: false,
@@ -146,175 +238,111 @@ const postController = {
         ...(userId && { userId }),
       };
 
-      // Fetch ALL posts from database (without pagination initially)
+      // Optimized database query - only essential fields
+      console.log(
+        `🔍 Querying database: skip=${parsedOffset}, take=${parsedLimit}`
+      );
+
       const allDatabasePosts = await prisma.post.findMany({
         where: whereClause,
-        include: {
+        select: {
+          // Essential post fields only
+          postId: true,
+          userId: true,
+          title: true,
+          description: true,
+          category: true,
+          mediaUrl: true,
+          blurred: true,
+          viewsCount: true,
+          likesCount: true,
+          sharesCount: true,
+          createdAt: true,
+          isPublished: true,
+          // Essential author fields only
           author: {
             select: {
               userId: true,
               username: true,
               profilePic: true,
-              posts: true,
-              createdAt: true,
               role: true,
-              star: true,
             },
           },
+          // Limited sections for performance
           sections: {
-            orderBy: {
-              order: "asc",
+            select: {
+              sectionId: true,
+              type: true,
+              content: true,
+              src: true,
+              order: true,
+              imageDetail: true,
             },
+            orderBy: { order: "asc" },
+            take: 3, // Only first 3 sections for list view
           },
-          comments: {
-            where: { isDeleted: false },
-            select: { commentId: true },
-          },
-          ...(currentUserId && {
-            likes: {
-              where: {
-                userId: currentUserId,
-              },
-            },
-          }),
+          // Quick count only
           _count: {
             select: {
               comments: true,
               likes: true,
             },
           },
+          // User like status if authenticated
+          ...(currentUserId && {
+            likes: {
+              where: { userId: currentUserId },
+              select: { likeId: true },
+              take: 1,
+            },
+          }),
         },
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { createdAt: "desc" },
+        skip: parsedOffset,
+        take: parsedLimit,
       });
 
-      // Transform posts to include isLiked field
+      console.log(
+        `✅ Database query completed: ${allDatabasePosts.length} posts retrieved`
+      );
+
+      // Transform posts - minimal processing
       const transformedPosts = allDatabasePosts.map((post) => ({
         ...post,
         isLiked: currentUserId ? post.likes?.length > 0 || false : false,
-        likes: undefined, // Remove the likes array from response
+        likes: undefined, // Remove likes array from response
+        comments: [], // Empty array for list view
       }));
 
-      // Fetch Axiom data
-      let axiomData = null;
-      try {
-        axiomData = await axiomController.fetchAxiomData();
-      } catch (error) {
-        console.error("Error fetching Axiom data:", error);
-        axiomData = null;
-      }
-
-      // Create Axiom posts if data is available
-      let axiomPosts = [];
-      if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
-        console.log(`Creating ${axiomData.length} Axiom posts...`);
-        axiomPosts = axiomData.map((token, index) => ({
-          postId: `botcoin-${
-            token.tokenAddress || token.pairAddress || index
-          }-${index}`,
-          userId: "00000000-0000-0000-0000-000000000000",
-          title: (
-            token.tokenName ||
-            token.tokenTicker ||
-            "Unknown Token"
-          ).substring(0, 100),
-          description: `Token: ${(
-            token.tokenTicker ||
-            token.tokenName ||
-            "N/A"
-          ).substring(0, 30)} | Protocol: ${(token.protocol || "N/A").substring(
-            0,
-            20
-          )}`,
-          category: "CRYPTO",
-          content: `Token: ${(
-            token.tokenName ||
-            token.tokenTicker ||
-            "Unknown"
-          ).substring(0, 50)}\nProtocol: ${(token.protocol || "N/A").substring(
-            0,
-            30
-          )}`,
-          isPublished: true,
-          isDeleted: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          author: {
-            userId: "00000000-0000-0000-0000-000000000000",
-            username: "BOT COINS",
-            profilePic: "/admin",
-            posts: 0,
-            createdAt: new Date(),
-            role: "member",
-            star: 0,
-          },
-          sections: [
-            {
-              sectionId: `botcoin-section-${index}`,
-              postId: `botcoin-${
-                token.tokenAddress || token.pairAddress || index
-              }-${index}`,
-              type: "code",
-              content: (
-                token.tokenAddress ||
-                token.pairAddress ||
-                "Unknown Address"
-              ).substring(0, 50),
-              src: null,
-              order: 1,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-          ],
-          comments: [],
-          _count: {
-            comments: 0,
-            likes: 0,
-          },
-          source: "axiom",
-          mediaUrl:
-            token.tokenImage ||
-            "https://via.placeholder.com/400x200?text=Token+Image",
-          blurred: true,
-          viewsCount: token.volume || 0,
-          likesCount: 0,
-          sharesCount: 0,
-          isLiked: false,
-        }));
-      }
-
-      // Combine ALL posts and axiom posts first
-      const allPosts = [...transformedPosts, ...axiomPosts];
-      const totalPosts = allPosts.length;
+      // Quick count query
+      const totalDatabasePosts = await prisma.post.count({
+        where: whereClause,
+      });
 
       console.log(
-        `Combined posts: ${allPosts.length} total (${transformedPosts.length} database + ${axiomPosts.length} axiom)`
+        `✅ Response: ${transformedPosts.length}/${totalDatabasePosts} posts, offset=${parsedOffset}, limit=${parsedLimit}`
       );
 
-      // Shuffle all posts randomly but maintain consistency for pagination
-      const shuffledPosts = allPosts.sort(() => Math.random() - 0.5);
-
-      // Apply pagination to the shuffled combined results
-      const paginatedPosts = shuffledPosts.slice(skip, skip + parseInt(limit));
-
-      console.log(
-        `Pagination: page ${page}, limit ${limit}, skip ${skip}, returning ${paginatedPosts.length} posts out of ${totalPosts} total`
-      );
-
-      res.status(200).json({
+      // Send response immediately - no additional processing
+      return res.status(200).json({
         success: true,
-        data: paginatedPosts,
+        data: transformedPosts,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalPosts / limit),
-          totalItems: totalPosts,
-          itemsPerPage: parseInt(limit),
+          offset: parsedOffset,
+          limit: parsedLimit,
+          totalItems: totalDatabasePosts,
+          returned: transformedPosts.length,
+          hasMore: parsedOffset + transformedPosts.length < totalDatabasePosts,
         },
         sources: {
           database: transformedPosts.length,
-          axiom: axiomPosts.length,
-          total: allPosts.length,
+          axiom: 0,
+          total: transformedPosts.length,
+        },
+        meta: {
+          endpoint: "/api/posts",
+          queryTime: new Date().toISOString(),
+          note: "Database posts only - use /api/posts/combined for mixed content",
         },
       });
     } catch (error) {
@@ -329,8 +357,7 @@ const postController = {
   // Search all published posts (lightweight search for everyone)
   searchAllPosts: async (req, res) => {
     try {
-      const { q, category, author, page = 1, limit = 20 } = req.query;
-      const skip = (page - 1) * limit;
+      const { q, category, author } = req.query;
       const currentUserId = req.user?.userId; // Get current user ID if authenticated
 
       // Build search conditions
@@ -382,6 +409,7 @@ const postController = {
         };
       }
 
+      // Fetch ALL posts without pagination limits
       const posts = await prisma.post.findMany({
         where: whereClause,
         include: {
@@ -408,13 +436,7 @@ const postController = {
           },
         },
         orderBy: { createdAt: "desc" },
-        skip: parseInt(skip),
-        take: parseInt(limit),
-      });
-
-      // Get total count for pagination
-      const totalPosts = await prisma.post.count({
-        where: whereClause,
+        // Removed skip and take to get all posts
       });
 
       // Transform posts to include isLiked field
@@ -428,18 +450,13 @@ const postController = {
         success: true,
         data: transformedPosts,
         count: transformedPosts.length,
-        totalCount: totalPosts,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalPosts / limit),
-          totalItems: totalPosts,
-          itemsPerPage: parseInt(limit),
-        },
+        totalCount: transformedPosts.length,
         searchParams: {
           query: q || "",
           category: category || "",
           author: author || "",
         },
+        message: "All matching posts retrieved without pagination limits",
       });
     } catch (error) {
       console.error("Error searching posts:", error);
