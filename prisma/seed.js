@@ -63,75 +63,138 @@ async function main() {
     );
 
     try {
-      // Delete posts with category DUMMY and their related data using transaction
-      const result = await prisma.$transaction(async (tx) => {
-        // First, find all DUMMY posts
-        const dummyPosts = await tx.post.findMany({
-          where: { category: "DUMMY" },
-          select: { postId: true },
-        });
-
-        if (dummyPosts.length === 0) {
-          return { message: "No DUMMY posts found to delete.", count: 0 };
-        }
-
-        const dummyPostIds = dummyPosts.map((p) => p.postId);
-        console.log(
-          `   🎯 Found ${dummyPosts.length} DUMMY posts to delete...`
-        );
-
-        // Delete in proper order to avoid foreign key constraint issues
-        // 1. Delete content sections
-        const delSections = await tx.contentSection.deleteMany({
-          where: { postId: { in: dummyPostIds } },
-        });
-        console.log(`   - contentSections deleted: ${delSections.count}`);
-
-        // 2. Delete comments (including nested comments)
-        const delComments = await tx.comment.deleteMany({
-          where: { postId: { in: dummyPostIds } },
-        });
-        console.log(`   - comments deleted: ${delComments.count}`);
-
-        // 3. Delete likes
-        const delLikes = await tx.like.deleteMany({
-          where: { postId: { in: dummyPostIds } },
-        });
-        console.log(`   - likes deleted: ${delLikes.count}`);
-
-        // 4. Finally delete the posts
-        const delPosts = await tx.post.deleteMany({
-          where: { category: "DUMMY" },
-        });
-        console.log(`   - DUMMY posts deleted: ${delPosts.count}`);
-
-        return {
-          message: "deleteDummy completed successfully",
-          count: delPosts.count,
-          details: {
-            posts: delPosts.count,
-            sections: delSections.count,
-            comments: delComments.count,
-            likes: delLikes.count,
-          },
-        };
+      // First, find all DUMMY posts
+      const dummyPosts = await prisma.post.findMany({
+        where: { category: "DUMMY" },
+        select: { postId: true },
       });
 
-      if (result.count === 0) {
+      if (dummyPosts.length === 0) {
         console.log("   ℹ️  No DUMMY posts found to delete.");
-      } else {
-        console.log(`✅ ${result.message}`);
-        console.log(`📊 Deletion summary:`);
-        console.log(`   - Posts: ${result.details.posts}`);
-        console.log(`   - Sections: ${result.details.sections}`);
-        console.log(`   - Comments: ${result.details.comments}`);
-        console.log(`   - Likes: ${result.details.likes}`);
+        return;
       }
+
+      const dummyPostIds = dummyPosts.map((p) => p.postId);
+      console.log(`   🎯 Found ${dummyPosts.length} DUMMY posts to delete...`);
+
+      // Use batch deletion with longer timeout to avoid transaction timeout
+      const result = await prisma.$transaction(
+        async (tx) => {
+          // Delete in proper order to avoid foreign key constraint issues
+          // 1. Delete content sections
+          const delSections = await tx.contentSection.deleteMany({
+            where: { postId: { in: dummyPostIds } },
+          });
+          console.log(`   - contentSections deleted: ${delSections.count}`);
+
+          // 2. Delete comments (including nested comments)
+          const delComments = await tx.comment.deleteMany({
+            where: { postId: { in: dummyPostIds } },
+          });
+          console.log(`   - comments deleted: ${delComments.count}`);
+
+          // 3. Delete likes
+          const delLikes = await tx.like.deleteMany({
+            where: { postId: { in: dummyPostIds } },
+          });
+          console.log(`   - likes deleted: ${delLikes.count}`);
+
+          // 4. Finally delete the posts
+          const delPosts = await tx.post.deleteMany({
+            where: { category: "DUMMY" },
+          });
+          console.log(`   - DUMMY posts deleted: ${delPosts.count}`);
+
+          return {
+            message: "deleteDummy completed successfully",
+            count: delPosts.count,
+            details: {
+              posts: delPosts.count,
+              sections: delSections.count,
+              comments: delComments.count,
+              likes: delLikes.count,
+            },
+          };
+        },
+        {
+          timeout: 30000, // 30 seconds timeout for large deletions
+          maxWait: 35000, // 35 seconds max wait
+        }
+      );
+
+      console.log(`✅ ${result.message}`);
+      console.log(`📊 Deletion summary:`);
+      console.log(`   - Posts: ${result.details.posts}`);
+      console.log(`   - Sections: ${result.details.sections}`);
+      console.log(`   - Comments: ${result.details.comments}`);
+      console.log(`   - Likes: ${result.details.likes}`);
 
       console.log("🔌 Database connection will be closed...");
       return; // This will exit the main function and go to finally block
     } catch (err) {
       console.error("❌ deleteDummy failed:", err);
+
+      // If transaction timeout, try alternative approach with batch deletion
+      if (err.code === "P2028") {
+        console.log(
+          "🔄 Transaction timeout detected. Trying batch deletion approach..."
+        );
+
+        try {
+          // Delete in batches without transaction
+          const batchSize = 1000;
+          let totalDeleted = 0;
+
+          // Get all DUMMY post IDs
+          const allDummyPosts = await prisma.post.findMany({
+            where: { category: "DUMMY" },
+            select: { postId: true },
+          });
+
+          const allDummyPostIds = allDummyPosts.map((p) => p.postId);
+          console.log(
+            `   🎯 Processing ${allDummyPostIds.length} posts in batches of ${batchSize}...`
+          );
+
+          // Process in batches
+          for (let i = 0; i < allDummyPostIds.length; i += batchSize) {
+            const batchIds = allDummyPostIds.slice(i, i + batchSize);
+
+            // Delete related data for this batch
+            await prisma.contentSection.deleteMany({
+              where: { postId: { in: batchIds } },
+            });
+
+            await prisma.comment.deleteMany({
+              where: { postId: { in: batchIds } },
+            });
+
+            await prisma.like.deleteMany({
+              where: { postId: { in: batchIds } },
+            });
+
+            // Delete posts in this batch
+            const deletedBatch = await prisma.post.deleteMany({
+              where: { postId: { in: batchIds } },
+            });
+
+            totalDeleted += deletedBatch.count;
+            console.log(
+              `   📦 Batch ${Math.floor(i / batchSize) + 1}: Deleted ${
+                deletedBatch.count
+              } posts (Total: ${totalDeleted})`
+            );
+          }
+
+          console.log(`✅ Batch deletion completed successfully!`);
+          console.log(`📊 Total posts deleted: ${totalDeleted}`);
+          return;
+        } catch (batchErr) {
+          console.error("❌ Batch deletion also failed:", batchErr);
+          process.exit(1);
+        }
+      }
+
       process.exit(1);
     }
   }
@@ -258,7 +321,7 @@ async function main() {
   }
 
   // ----- seeding params -----
-  const TOTAL = parseInt(process.env.SEED_TOTAL || "1000", 10);
+  const TOTAL = parseInt(process.env.SEED_TOTAL || "10000", 10);
   console.log(
     `📝 Creating ${TOTAL} dummy posts using ${useUserIds.length} non-owner user(s)...`
   );

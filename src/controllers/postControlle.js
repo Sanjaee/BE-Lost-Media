@@ -79,7 +79,7 @@ const postController = {
           ).substring(0, 30)} | Protocol: ${(token.protocol || "N/A").substring(
             0,
             20
-          )}`,
+          )} | Market Cap: ${(token.marketCapSol || 0).toFixed(2)} SOL`,
           content: `Token: ${(
             token.tokenName ||
             token.tokenTicker ||
@@ -87,8 +87,8 @@ const postController = {
           ).substring(0, 50)}\nProtocol: ${(token.protocol || "N/A").substring(
             0,
             30
-          )}`,
-          category: "CRYPTO",
+          )}\nMarket Cap: ${(token.marketCapSol || 0).toFixed(2)} SOL`,
+          category: "BOT",
           mediaUrl:
             token.tokenImage ||
             "https://via.placeholder.com/400x200?text=Token+Image",
@@ -124,6 +124,124 @@ const postController = {
               postId: `botcoin-${
                 token.tokenAddress || token.pairAddress || index
               }-${index}`,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              sectionId: `stats-${
+                token.tokenAddress || token.pairAddress || index
+              }`,
+              type: "html",
+              content: `
+                <div style="background: #1a1a1a; border-radius: 8px; padding: 16px; margin: 16px 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 16px;">
+                    <!-- Top Row -->
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">👥</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                        token.top10HoldersPercent || 0
+                      ).toFixed(2)}%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">Top 10 H.</div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">👨‍🍳</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                        token.devHoldsPercent || 0
+                      ).toFixed(2)}%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">Dev H.</div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">🎯</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                        token.snipersHoldPercent || 0
+                      ).toFixed(2)}%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">Snipers H.</div>
+                    </div>
+                    
+                    <!-- Bottom Row -->
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">👻</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                        token.insidersHoldPercent || 0
+                      ).toFixed(2)}%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">Insiders</div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">🔗</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                        token.bundlersHoldPercent || 0
+                      ).toFixed(2)}%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">Bundlers</div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                      <div style="font-size: 20px; margin-bottom: 6px;">🔥</div>
+                      <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">100.00%</div>
+                      <div style="color: #888; font-size: 11px; line-height: 1.2;">LP Burned</div>
+                    </div>
+                  </div>
+                  
+                  <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                    <h4 style="color: #00ff88; margin: 0 0 8px 0; font-size: 14px;">Market Data</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 12px;">
+                      <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #888;">Market Cap:</span>
+                        <span style="color: #fff;">${(
+                          token.marketCapSol || 0
+                        ).toFixed(2)} SOL</span>
+                      </div>
+                      <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #888;">Volume (24h):</span>
+                        <span style="color: #fff;">${(
+                          token.volumeSol || 0
+                        ).toFixed(2)} SOL</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style="background: #2a2a2a; padding: 12px; border-radius: 6px;">
+                    <h4 style="color: #00ff88; margin: 0 0 8px 0; font-size: 14px;">Social Links</h4>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                      ${
+                        token.website
+                          ? `<a href="${token.website}" target="_blank" style="color: #00ff88; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #00ff88;">🌐 Website</a>`
+                          : ""
+                      }
+                      ${
+                        token.twitter
+                          ? `<a href="${token.twitter}" target="_blank" style="color: #1da1f2; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #1da1f2;">🐦 Twitter</a>`
+                          : ""
+                      }
+                      ${
+                        token.telegram
+                          ? `<a href="${token.telegram}" target="_blank" style="color: #0088cc; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #0088cc;">📱 Telegram</a>`
+                          : ""
+                      }
+                      ${
+                        token.discord
+                          ? `<a href="${token.discord}" target="_blank" style="color: #7289da; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #7289da;">🎮 Discord</a>`
+                          : ""
+                      }
+                      ${
+                        !token.website &&
+                        !token.twitter &&
+                        !token.telegram &&
+                        !token.discord
+                          ? '<span style="color: #888; font-size: 12px;">No social links available</span>'
+                          : ""
+                      }
+                    </div>
+                  </div>
+                </div>
+              `,
+              src: null,
+              order: 2,
+              postId: `stats-${
+                token.tokenAddress || token.pairAddress || index
+              }`,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             },
@@ -349,6 +467,385 @@ const postController = {
       res.status(200).json({
         success: false,
         message: "Failed to fetch posts",
+        error: error.message,
+      });
+    }
+  },
+
+  // Combined function to get both database and Axiom posts with limit-based pagination
+  getAllPostsCombined: async (req, res) => {
+    try {
+      const { limit, offset = 0, category, userId } = req.query;
+
+      // Validasi wajib parameter limit untuk mencegah memory overload
+      if (!limit) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' is required. Example: ?limit=20&offset=0",
+          example: "/api/posts/combined?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+
+      // Validasi range limit
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'limit' must be a positive number (minimum 1)",
+          example: "/api/posts/combined?limit=20&offset=0",
+        });
+      }
+
+      if (parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Parameter 'limit' cannot exceed 100 to prevent memory issues",
+          example: "/api/posts/combined?limit=20&offset=0",
+          maxLimit: 100,
+        });
+      }
+
+      // Validasi offset
+      if (isNaN(parsedOffset) || parsedOffset < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Parameter 'offset' must be a non-negative number",
+          example: "/api/posts/combined?limit=20&offset=0",
+        });
+      }
+
+      const currentUserId = req.user?.userId;
+
+      console.log(
+        `🔄 getAllPostsCombined called - Limit: ${parsedLimit}, Offset: ${parsedOffset}, User: ${
+          currentUserId || "Anonymous"
+        }`
+      );
+
+      // Fetch database posts
+      const whereClause = {
+        isDeleted: false,
+        ...(category && { category }),
+        ...(userId && { userId }),
+      };
+
+      const allDatabasePosts = await prisma.post.findMany({
+        where: whereClause,
+        select: {
+          postId: true,
+          userId: true,
+          title: true,
+          description: true,
+          category: true,
+          mediaUrl: true,
+          blurred: true,
+          viewsCount: true,
+          likesCount: true,
+          sharesCount: true,
+          createdAt: true,
+          isPublished: true,
+          author: {
+            select: {
+              userId: true,
+              username: true,
+              profilePic: true,
+              role: true,
+            },
+          },
+          sections: {
+            select: {
+              sectionId: true,
+              type: true,
+              content: true,
+              src: true,
+              order: true,
+              imageDetail: true,
+            },
+            orderBy: { order: "asc" },
+            take: 3,
+          },
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
+          },
+          ...(currentUserId && {
+            likes: {
+              where: { userId: currentUserId },
+              select: { likeId: true },
+              take: 1,
+            },
+          }),
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Transform database posts
+      const transformedDatabasePosts = allDatabasePosts.map((post) => ({
+        ...post,
+        isLiked: currentUserId ? post.likes?.length > 0 || false : false,
+        likes: undefined,
+        comments: [],
+        source: "database",
+      }));
+
+      // Fetch Axiom data
+      let axiomPosts = [];
+      try {
+        const axiomData = await axiomController.fetchAxiomData();
+        if (axiomData && Array.isArray(axiomData) && axiomData.length > 0) {
+          console.log(`Creating ${axiomData.length} Axiom posts...`);
+          axiomPosts = axiomData.map((token, index) => ({
+            postId: `${
+              token.tokenAddress || token.pairAddress || index
+            }-${index}`,
+            userId: "00000000-0000-0000-0000-000000000000",
+            title: (
+              token.tokenName ||
+              token.tokenTicker ||
+              "Unknown Token"
+            ).substring(0, 100),
+            description: `Token: ${(
+              token.tokenTicker ||
+              token.tokenName ||
+              "N/A"
+            ).substring(0, 30)} | Protocol: ${(
+              token.protocol || "N/A"
+            ).substring(0, 20)} | Market Cap: ${(
+              token.marketCapSol || 0
+            ).toFixed(2)} SOL`,
+            content: `Token: ${(
+              token.tokenName ||
+              token.tokenTicker ||
+              "Unknown"
+            ).substring(0, 50)}\nProtocol: ${(
+              token.protocol || "N/A"
+            ).substring(0, 30)}\nMarket Cap: ${(
+              token.marketCapSol || 0
+            ).toFixed(2)} SOL`,
+            category: "BOT",
+            mediaUrl:
+              token.tokenImage ||
+              "https://via.placeholder.com/400x200?text=Token+Image",
+            blurred: true,
+            viewsCount: 0,
+            likesCount: 0,
+            sharesCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isDeleted: false,
+            isPublished: true,
+            isLiked: false,
+            author: {
+              userId: "00000000-0000-0000-0000-000000000000",
+              username: "BOT COINS",
+              profilePic: "/admin",
+              posts: 0,
+              createdAt: new Date().toISOString(),
+              role: "member",
+              star: 0,
+            },
+            sections: [
+              {
+                sectionId: `${
+                  token.tokenAddress || token.pairAddress || index
+                }`,
+                type: "code",
+                content: (
+                  token.tokenAddress ||
+                  token.pairAddress ||
+                  "Unknown Address"
+                ).substring(0, 50),
+                src: null,
+                order: 1,
+                postId: `botcoin-${
+                  token.tokenAddress || token.pairAddress || index
+                }-${index}`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              {
+                sectionId: `stats-${
+                  token.tokenAddress || token.pairAddress || index
+                }`,
+                type: "html",
+                content: `
+                  <div style="background: #1a1a1a; border-radius: 8px; padding: 16px; margin: 16px 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 16px;">
+                      <!-- Top Row -->
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">👥</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                          token.top10HoldersPercent || 0
+                        ).toFixed(2)}%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">Top 10 H.</div>
+                      </div>
+                      
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">👨‍🍳</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                          token.devHoldsPercent || 0
+                        ).toFixed(2)}%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">Dev H.</div>
+                      </div>
+                      
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">🎯</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                          token.snipersHoldPercent || 0
+                        ).toFixed(2)}%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">Snipers H.</div>
+                      </div>
+                      
+                      <!-- Bottom Row -->
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">👻</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                          token.insidersHoldPercent || 0
+                        ).toFixed(2)}%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">Insiders</div>
+                      </div>
+                      
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">🔗</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">${(
+                          token.bundlersHoldPercent || 0
+                        ).toFixed(2)}%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">Bundlers</div>
+                      </div>
+                      
+                      <div style="background: #2a2a2a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #333; min-height: 100px;">
+                        <div style="font-size: 20px; margin-bottom: 6px;">🔥</div>
+                        <div style="color: #00ff88; font-size: 16px; font-weight: 600; margin-bottom: 4px; word-break: break-word;">100.00%</div>
+                        <div style="color: #888; font-size: 11px; line-height: 1.2;">LP Burned</div>
+                      </div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                      <h4 style="color: #00ff88; margin: 0 0 8px 0; font-size: 14px;">Market Data</h4>
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between;">
+                          <span style="color: #888;">Market Cap:</span>
+                          <span style="color: #fff;">${(
+                            token.marketCapSol || 0
+                          ).toFixed(2)} SOL</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                          <span style="color: #888;">Volume (24h):</span>
+                          <span style="color: #fff;">${(
+                            token.volumeSol || 0
+                          ).toFixed(2)} SOL</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px;">
+                      <h4 style="color: #00ff88; margin: 0 0 8px 0; font-size: 14px;">Social Links</h4>
+                      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        ${
+                          token.website
+                            ? `<a href="${token.website}" target="_blank" style="color: #00ff88; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #00ff88;">🌐 Website</a>`
+                            : ""
+                        }
+                        ${
+                          token.twitter
+                            ? `<a href="${token.twitter}" target="_blank" style="color: #1da1f2; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #1da1f2;">🐦 Twitter</a>`
+                            : ""
+                        }
+                        ${
+                          token.telegram
+                            ? `<a href="${token.telegram}" target="_blank" style="color: #0088cc; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #0088cc;">📱 Telegram</a>`
+                            : ""
+                        }
+                        ${
+                          token.discord
+                            ? `<a href="${token.discord}" target="_blank" style="color: #7289da; text-decoration: none; padding: 6px 12px; background: #1a1a1a; border-radius: 4px; font-size: 12px; border: 1px solid #7289da;">🎮 Discord</a>`
+                            : ""
+                        }
+                        ${
+                          !token.website &&
+                          !token.twitter &&
+                          !token.telegram &&
+                          !token.discord
+                            ? '<span style="color: #888; font-size: 12px;">No social links available</span>'
+                            : ""
+                        }
+                      </div>
+                    </div>
+                  </div>
+                `,
+                src: null,
+                order: 2,
+                postId: `stats-${
+                  token.tokenAddress || token.pairAddress || index
+                }`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+            _count: {
+              comments: 0,
+              likes: 0,
+            },
+            comments: [],
+            source: "axiom",
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching Axiom data:", error);
+      }
+
+      // Combine and sort all posts by createdAt (newest first)
+      const allPosts = [...transformedDatabasePosts, ...axiomPosts].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      // Apply pagination to combined results
+      const paginatedPosts = allPosts.slice(
+        parsedOffset,
+        parsedOffset + parsedLimit
+      );
+
+      const totalPosts = allPosts.length;
+      const databaseCount = transformedDatabasePosts.length;
+      const axiomCount = axiomPosts.length;
+
+      console.log(
+        `✅ Combined API Success - Offset: ${parsedOffset}, Limit: ${parsedLimit}, Returned: ${paginatedPosts.length} of ${totalPosts} total posts (DB: ${databaseCount}, Axiom: ${axiomCount})`
+      );
+
+      res.status(200).json({
+        success: true,
+        data: paginatedPosts,
+        pagination: {
+          offset: parsedOffset,
+          limit: parsedLimit,
+          totalItems: totalPosts,
+          returned: paginatedPosts.length,
+          hasMore: parsedOffset + paginatedPosts.length < totalPosts,
+        },
+        sources: {
+          database: databaseCount,
+          axiom: axiomCount,
+          total: totalPosts,
+        },
+        meta: {
+          endpoint: "/api/posts/combined",
+          queryTime: new Date().toISOString(),
+          note: "Combined database and Axiom posts",
+        },
+      });
+    } catch (error) {
+      console.error("Error in getAllPostsCombined:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch combined posts",
         error: error.message,
       });
     }

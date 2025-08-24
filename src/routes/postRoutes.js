@@ -28,9 +28,10 @@ const optionalAuth = (req, res, next) => {
 };
 
 // Public routes (no authentication required)
-router.get("/", optionalAuth, postController.getAllPosts); // Database posts only
+router.get("/", optionalAuth, postController.getAllPostsCombined); // Combined database and Axiom posts
+router.get("/database-only", optionalAuth, postController.getAllPosts); // Database posts only
 router.get("/with-axiom", optionalAuth, postController.getAllPostsWithAxiom); // Axiom posts only
-router.get("/combined", optionalAuth, postController.getAllPosts); // For now, use getAllPosts for combined
+router.get("/combined", optionalAuth, postController.getAllPostsCombined); // Combined database and Axiom posts
 router.get("/search", optionalAuth, postController.searchAllPosts);
 router.get("/:postId", postController.getPostById);
 router.post("/:postId/view", postController.incrementViewCount);
