@@ -9,6 +9,7 @@ const postRoutes = require("./src/routes/postRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
 const paymentRoutes = require("./src/routes/paymentRoutes");
 const axiomRoutes = require("./src/routes/axiomRoutes");
+const { startScheduler } = require("./src/utils/scheduler");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -93,4 +94,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`🔐 Auth routes: http://localhost:${PORT}/auth`);
+
+  // Start the scheduled posts scheduler
+  startScheduler();
 });

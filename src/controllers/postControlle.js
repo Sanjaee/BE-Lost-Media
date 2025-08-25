@@ -1138,8 +1138,16 @@ const postController = {
   // Create new post with content sections
   createPost: async (req, res) => {
     try {
-      const { title, description, category, mediaUrl, sections, blurred } =
-        req.body;
+      const {
+        title,
+        description,
+        category,
+        mediaUrl,
+        sections,
+        blurred,
+        scheduledAt,
+        isScheduled,
+      } = req.body;
       const { userId } = req.user;
 
       // Ambil data user untuk cek role dan postsCount
@@ -1225,7 +1233,10 @@ const postController = {
             mediaUrl: mediaUrl || null,
             blurred: blurred !== undefined ? blurred : true, // Default to true if not provided
             content: generatedContent, // Use generated content
-            isPublished: privilegedRoles.includes(user.role), // Auto-publish for privileged roles
+            isPublished: privilegedRoles.includes(user.role) && !isScheduled, // Auto-publish for privileged roles only if not scheduled
+            scheduledAt:
+              isScheduled && scheduledAt ? new Date(scheduledAt) : null,
+            isScheduled: isScheduled || false,
           },
         });
 
@@ -1292,8 +1303,16 @@ const postController = {
   updatePost: async (req, res) => {
     try {
       const { postId } = req.params;
-      const { title, description, category, mediaUrl, sections, blurred } =
-        req.body;
+      const {
+        title,
+        description,
+        category,
+        mediaUrl,
+        sections,
+        blurred,
+        scheduledAt,
+        isScheduled,
+      } = req.body;
       const { userId } = req.user;
 
       // Check if post exists and belongs to user
@@ -1324,6 +1343,14 @@ const postController = {
             ...(category && { category }),
             ...(mediaUrl !== undefined && { mediaUrl }),
             ...(blurred !== undefined && { blurred }),
+            ...(scheduledAt !== undefined && {
+              scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+            }),
+            ...(isScheduled !== undefined && { isScheduled }),
+            // Update isPublished based on scheduling
+            ...(isScheduled !== undefined && {
+              isPublished: isScheduled ? false : existingPost.isPublished,
+            }),
           },
         });
 
@@ -2769,6 +2796,75 @@ const postController = {
         message: "Failed to fetch posts count",
         error: error.message,
       });
+    }
+  },
+
+  // Function to publish scheduled posts (can be called by cron job or manually)
+  publishScheduledPosts: async () => {
+    try {
+      const now = new Date();
+
+      // Find all scheduled posts that should be published
+      const scheduledPosts = await prisma.post.findMany({
+        where: {
+          isScheduled: true,
+          isPublished: false,
+          isDeleted: false,
+          scheduledAt: {
+            lte: now, // Less than or equal to current time
+          },
+        },
+        include: {
+          author: {
+            select: {
+              userId: true,
+              username: true,
+            },
+          },
+        },
+      });
+
+      if (scheduledPosts.length === 0) {
+        console.log("No scheduled posts to publish");
+        return { success: true, publishedCount: 0 };
+      }
+
+      // Publish all scheduled posts
+      const publishedPosts = await prisma.$transaction(async (tx) => {
+        const published = [];
+
+        for (const post of scheduledPosts) {
+          const updatedPost = await tx.post.update({
+            where: { postId: post.postId },
+            data: {
+              isPublished: true,
+              isScheduled: false,
+              scheduledAt: null, // Clear scheduled date after publishing
+            },
+          });
+
+          published.push(updatedPost);
+
+          // Create notification for the author
+          await tx.notification.create({
+            data: {
+              userId: post.author.userId,
+              actorId: post.author.userId, // Self notification
+              type: "post_scheduled_published",
+              content: `Your scheduled post "${post.title}" has been published automatically.`,
+              actionUrl: `/post/${post.postId}`,
+            },
+          });
+        }
+
+        return published;
+      });
+
+      console.log(`Published ${publishedPosts.length} scheduled posts`);
+      return { success: true, publishedCount: publishedPosts.length };
+    } catch (error) {
+      console.error("Error publishing scheduled posts:", error);
+      return { success: false, error: error.message };
     }
   },
 };

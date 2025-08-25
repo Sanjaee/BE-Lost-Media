@@ -66,6 +66,8 @@ model Post {
   updatedAt     DateTime  @updatedAt
   isDeleted     Boolean   @default(false)
   isPublished   Boolean   @default(false)
+  scheduledAt   DateTime? // New field for scheduled posts
+  isScheduled   Boolean   @default(false) // Flag to indicate if post is scheduled
   
   author   User      @relation(fields: [userId], references: [userId])
   comments Comment[]
