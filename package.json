@@ -16,6 +16,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@plisio/api-client": "^1.0.1",
     "@prisma/client": "^5.11.0",
     "axios": "^1.10.0",
     "cookie-parser": "^1.4.7",

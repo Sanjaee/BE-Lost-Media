@@ -8,6 +8,7 @@ const authRoutes = require("./src/routes/authRoutes");
 const postRoutes = require("./src/routes/postRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
 const paymentRoutes = require("./src/routes/paymentRoutes");
+const plisioRoutes = require("./src/routes/plisioRoutes");
 const axiomRoutes = require("./src/routes/axiomRoutes");
 const { startScheduler } = require("./src/utils/scheduler");
 
@@ -63,6 +64,7 @@ app.use("/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/plisio", plisioRoutes);
 app.use("/api/axiom", axiomRoutes);
 
 // Health check route
