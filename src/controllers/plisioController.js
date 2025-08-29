@@ -50,33 +50,308 @@ function getUrls() {
   return { backendUrl, frontendUrl };
 }
 
-// Helper: Verify Plisio callback signature
+// Helper: Verify Plisio callback signature (updated implementation)
 function verifyPlisioCallback(data, secretKey) {
-  try {
-    if (!data.verify_hash || !secretKey) {
-      return false;
-    }
+  if (!data.verify_hash || !secretKey) {
+    console.error("Missing verify_hash or secret key");
+    return false;
+  }
 
+  try {
     const ordered = { ...data };
     delete ordered.verify_hash;
 
-    // Sort keys alphabetically
-    const sortedKeys = Object.keys(ordered).sort();
+    // Sort the data for consistent hashing
     const sortedData = {};
-    sortedKeys.forEach((key) => {
-      sortedData[key] = ordered[key];
-    });
+    Object.keys(ordered)
+      .sort()
+      .forEach((key) => {
+        sortedData[key] = ordered[key];
+      });
 
-    const string = JSON.stringify(sortedData);
+    // Handle special fields as mentioned in documentation
+    if (sortedData.expire_utc) {
+      sortedData.expire_utc = String(sortedData.expire_utc);
+    }
+    if (sortedData.tx_urls) {
+      // Handle HTML entity decoding if needed
+      sortedData.tx_urls = sortedData.tx_urls
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'");
+    }
+
+    // For JSON callbacks, use JSON.stringify instead of PHP serialize
+    const dataString = JSON.stringify(sortedData);
+
+    // Create HMAC hash
     const hmac = crypto.createHmac("sha1", secretKey);
-    hmac.update(string);
-    const hash = hmac.digest("hex");
+    hmac.update(dataString);
+    const computedHash = hmac.digest("hex");
 
-    return hash === data.verify_hash;
+    console.log("Computed hash:", computedHash);
+    console.log("Received hash:", data.verify_hash);
+
+    return computedHash === data.verify_hash;
   } catch (error) {
-    console.error("Error verifying Plisio callback:", error);
+    console.error("Error verifying callback data:", error);
     return false;
   }
+}
+
+// Helper: Process payment status update
+async function processPaymentUpdate(callbackData) {
+  const {
+    txn_id,
+    order_number,
+    order_name,
+    status,
+    amount,
+    currency,
+    confirmations,
+    source_currency,
+    source_amount,
+    merchant_id,
+    invoice_commission,
+    invoice_sum,
+    invoice_total_sum,
+  } = callbackData;
+
+  console.log(`Processing payment update for order ${order_number}:`, {
+    txn_id,
+    status,
+    amount,
+    currency,
+    confirmations,
+  });
+
+  // Find payment by txn_id or order_number
+  let payment = await prisma.payment.findFirst({
+    where: {
+      OR: [{ midtransTransactionId: txn_id }, { orderId: order_number }],
+    },
+    include: {
+      user: true,
+      roleModel: true,
+    },
+  });
+
+  if (!payment) {
+    console.error(
+      `❌ Payment not found for txn_id: ${txn_id}, order_number: ${order_number}`
+    );
+    return false;
+  }
+
+  console.log(
+    `✅ Found payment: ${payment.orderId}, Current status: ${payment.status}`
+  );
+
+  // Map Plisio status to our system
+  const mappedStatus = mapPlisioStatusToPrisma(status);
+  console.log(`🔄 Status mapping: ${status} -> ${mappedStatus}`);
+
+  // Update payment status with detailed callback information
+  let paymentUpdate = {
+    status: mappedStatus,
+    transactionStatus: status,
+    midtransResponse: JSON.stringify(callbackData),
+    updatedAt: new Date(),
+    // Store additional Plisio-specific data
+    transactionDetails: JSON.stringify({
+      txn_id,
+      currency,
+      amount,
+      confirmations,
+      source_currency,
+      source_amount,
+      source_rate: callbackData.source_rate,
+      invoice_commission,
+      invoice_sum,
+      invoice_total_sum,
+      pending_amount: callbackData.pending_amount,
+      expected_confirmations: callbackData.expected_confirmations,
+      wallet_hash: callbackData.wallet_hash,
+      comment: callbackData.comment,
+      merchant: callbackData.merchant,
+      merchant_id,
+    }),
+  };
+
+  // Add paid timestamp if completed
+  if (status === "completed") {
+    paymentUpdate.paidAt = new Date();
+  }
+
+  const updatedPayment = await prisma.payment.update({
+    where: { id: payment.id },
+    data: paymentUpdate,
+    include: { user: true, roleModel: true },
+  });
+
+  console.log(
+    `✅ Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
+  );
+
+  // Handle successful payment completion
+  if (mappedStatus === "SUCCESS" && updatedPayment.userId) {
+    console.log(
+      `🎉 Processing successful payment for user: ${updatedPayment.userId}`
+    );
+
+    const notificationController = require("./notificationController");
+
+    // Handle star payment
+    if (updatedPayment.type === "star" && updatedPayment.star) {
+      console.log(
+        `⭐ Updating user ${updatedPayment.userId} star to ${updatedPayment.star}`
+      );
+
+      await prisma.user.update({
+        where: { userId: updatedPayment.userId },
+        data: { star: updatedPayment.star },
+      });
+
+      // Send star upgrade notification
+      const notificationResult =
+        await notificationController.createStarUpgradeNotification(
+          updatedPayment.userId,
+          updatedPayment.user?.username || "User",
+          updatedPayment.star,
+          updatedPayment.amount,
+          updatedPayment.orderId
+        );
+
+      if (notificationResult.success) {
+        console.log(
+          `✅ Star upgrade notification sent for order ${updatedPayment.orderId}`
+        );
+      } else {
+        console.log(
+          `⚠️ Star notification skipped: ${notificationResult.message}`
+        );
+      }
+
+      // Send email to admin
+      try {
+        await sendAdminPaymentSuccessEmail({
+          to: "afrizaahmad18@gmail.com",
+          type: "star",
+          username: updatedPayment.user?.username || "User",
+          email: updatedPayment.user?.email || "No email",
+          star: updatedPayment.star,
+          amount: updatedPayment.amount,
+          orderId: updatedPayment.orderId,
+          paymentMethod: "Crypto (Plisio)",
+          txnId: txn_id,
+          currency: currency,
+          amountReceived: amount,
+        });
+      } catch (err) {
+        console.error("❌ Failed to send email to admin:", err);
+      }
+    }
+    // Handle role payment
+    else if (
+      updatedPayment.role &&
+      (updatedPayment.type === "role" || !updatedPayment.type)
+    ) {
+      console.log(
+        `👑 Updating user ${updatedPayment.userId} role to ${updatedPayment.role}`
+      );
+
+      await prisma.user.update({
+        where: { userId: updatedPayment.userId },
+        data: { role: updatedPayment.role },
+      });
+
+      // Send role purchase notification
+      const notificationResult =
+        await notificationController.createRolePurchaseNotification(
+          updatedPayment.userId,
+          updatedPayment.user?.username || "User",
+          updatedPayment.role,
+          updatedPayment.amount,
+          updatedPayment.orderId
+        );
+
+      if (notificationResult.success) {
+        console.log(
+          `✅ Role purchase notification sent for order ${updatedPayment.orderId}`
+        );
+      } else {
+        console.log(
+          `⚠️ Role notification skipped: ${notificationResult.message}`
+        );
+      }
+
+      // Send email to admin
+      try {
+        await sendAdminPaymentSuccessEmail({
+          to: "afrizaahmad18@gmail.com",
+          type: "role",
+          username: updatedPayment.user?.username || "User",
+          email: updatedPayment.user?.email || "No email",
+          role: updatedPayment.role,
+          amount: updatedPayment.amount,
+          orderId: updatedPayment.orderId,
+          paymentMethod: "Crypto (Plisio)",
+          txnId: txn_id,
+          currency: currency,
+          amountReceived: amount,
+        });
+      } catch (err) {
+        console.error("❌ Failed to send email to admin:", err);
+      }
+    }
+  }
+
+  // Handle different payment statuses for logging
+  switch (status) {
+    case "new":
+      console.log(`New invoice created: ${txn_id}`);
+      break;
+
+    case "pending":
+      console.log(
+        `Payment pending confirmations: ${txn_id} (${confirmations} confirmations)`
+      );
+      break;
+
+    case "pending internal":
+      console.log(`Payment processing internally: ${txn_id}`);
+      break;
+
+    case "completed":
+      console.log(`Payment completed successfully: ${txn_id}`);
+      break;
+
+    case "mismatch":
+      console.log(`Payment overpaid: ${txn_id}`);
+      break;
+
+    case "expired":
+      console.log(`Payment expired: ${txn_id}`);
+      if (parseFloat(amount) > 0) {
+        console.log(`Partial payment received: ${amount} ${currency}`);
+      }
+      break;
+
+    case "cancelled":
+      console.log(`Payment cancelled: ${txn_id}`);
+      break;
+
+    case "error":
+      console.log(`Payment error: ${txn_id}`);
+      break;
+
+    default:
+      console.log(`Unknown payment status: ${status} for ${txn_id}`);
+  }
+
+  return true;
 }
 
 class PlisioController {
@@ -186,10 +461,12 @@ class PlisioController {
         source_currency: "USD",
         source_amount: amountUSD,
         currency: currency,
-        callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        success_callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        fail_callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        success_invoice_url: `${frontendUrl}/payment-success?orderId=${orderId}`,
+        // Callback URLs with json=true parameter for JSON responses
+        callback_url: `${backendUrl}/api/plisio/callback?json=true`,
+        success_callback_url: `${backendUrl}/api/plisio/success?json=true`,
+        fail_callback_url: `${backendUrl}/api/plisio/fail?json=true`,
+        // Frontend redirect URLs
+        success_invoice_url: `${frontendUrl}/crypto-success/${orderId}`,
         fail_invoice_url: `${frontendUrl}/buy-role`,
         email: user.email,
         description: `Purchase ${role.name} role for ${user.username}`,
@@ -375,634 +652,74 @@ class PlisioController {
     }
   }
 
-  // Handle callback from Plisio
+  // Unified callback handler for all Plisio payment status updates
   static async handleCallback(req, res) {
     try {
-      const callbackData = req.body;
-      console.log("Plisio callback received:", callbackData);
+      console.log("Received Plisio callback");
 
-      const { txn_id, status, amount, currency, order_number } = callbackData;
+      let callbackData;
 
-      // Verify the payment exists - try both txn_id and order_number
-      let payment = await prisma.payment.findUnique({
-        where: { midtransTransactionId: txn_id },
-        include: { user: true, roleModel: true },
-      });
+      // Handle different content types
+      if (req.is("application/json")) {
+        callbackData = JSON.parse(req.body.toString());
+      } else {
+        // Handle form-encoded data
+        const formData = new URLSearchParams(req.body.toString());
+        callbackData = Object.fromEntries(formData);
+      }
 
-      if (!payment && order_number) {
-        payment = await prisma.payment.findUnique({
-          where: { orderId: order_number },
-          include: { user: true, roleModel: true },
+      console.log("Callback data received:", callbackData);
+
+      // Verify the callback data integrity
+      if (!verifyPlisioCallback(callbackData, PLISIO_API_KEY)) {
+        console.error("Callback data verification failed");
+        return res.status(422).json({
+          status: "error",
+          message: "Data verification failed",
         });
       }
 
-      if (!payment) {
-        console.error(
-          "Payment not found for txn_id:",
-          txn_id,
-          "order_number:",
-          order_number
-        );
-        return res.status(404).json({ error: "Payment not found" });
-      }
+      console.log("Callback data verified successfully");
 
-      console.log(
-        "Found payment:",
-        payment.orderId,
-        "Current status:",
-        payment.status
-      );
+      // Process the payment update
+      await processPaymentUpdate(callbackData);
 
-      // Update payment status
-      let paymentUpdate = {
-        status: mapPlisioStatusToPrisma(status),
-        transactionStatus: status,
-        midtransResponse: JSON.stringify(callbackData),
-        updatedAt: new Date(),
-      };
-
-      if (status === "completed") {
-        paymentUpdate.paidAt = new Date();
-      }
-
-      const updatedPayment = await prisma.payment.update({
-        where: { id: payment.id },
-        data: paymentUpdate,
-        include: { user: true, roleModel: true },
+      // Respond to Plisio that callback was processed successfully
+      res.status(200).json({
+        status: "success",
+        message: "Callback processed successfully",
       });
-
-      console.log(
-        `Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
-      );
-
-      // If payment is successful, update user role/star and send notification
-      if (
-        mapPlisioStatusToPrisma(status) === "SUCCESS" &&
-        updatedPayment.userId
-      ) {
-        const notificationController = require("./notificationController");
-
-        // Handle star payment
-        if (updatedPayment.type === "star" && updatedPayment.star) {
-          console.log(
-            `Updating user ${updatedPayment.userId} star to ${updatedPayment.star}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { star: updatedPayment.star },
-          });
-
-          // Send star upgrade notification
-          const notificationResult =
-            await notificationController.createStarUpgradeNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.star,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio star upgrade notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, star ${updatedPayment.star}`
-            );
-          } else {
-            console.log(
-              `Plisio star notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "star",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              star: updatedPayment.star,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-        // Handle role payment
-        else if (
-          updatedPayment.role &&
-          (updatedPayment.type === "role" || !updatedPayment.type)
-        ) {
-          console.log(
-            `Updating user ${updatedPayment.userId} role to ${updatedPayment.role}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { role: updatedPayment.role },
-          });
-
-          // Send role purchase notification
-          const notificationResult =
-            await notificationController.createRolePurchaseNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.role,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio callback notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, role ${updatedPayment.role}`
-            );
-          } else {
-            console.log(
-              `Plisio callback notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "role",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              role: updatedPayment.role,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-      }
-
-      res.json({ success: true, message: "Callback processed successfully" });
     } catch (error) {
-      console.error("Plisio callback error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("Error processing Plisio callback:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Internal server error",
+      });
     }
   }
 
-  // Handle success callback from Plisio
-  static async handleSuccessCallback(req, res) {
+  // Unified payment status checker for frontend
+  static async checkPaymentStatus(req, res) {
     try {
-      const callbackData = req.body;
-      console.log("Plisio success callback received:", callbackData);
+      const { orderId, userEmail } = req.body;
+      const userId = req.user.userId;
 
-      const { txn_id, status, amount, currency, order_number } = callbackData;
+      console.log(
+        `🔍 Checking payment status for orderId: ${orderId}, userEmail: ${userEmail}`
+      );
 
-      // Verify the payment exists - try both txn_id and order_number
-      let payment = await prisma.payment.findUnique({
-        where: { orderId: order_number },
-        include: { user: true, roleModel: true },
-      });
-
-      if (!payment && txn_id) {
-        payment = await prisma.payment.findUnique({
-          where: { midtransTransactionId: txn_id },
-          include: { user: true, roleModel: true },
+      if (!orderId || !userEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing orderId or userEmail",
         });
       }
 
-      if (!payment) {
-        console.error(
-          "Payment not found for order:",
-          order_number,
-          "txn_id:",
-          txn_id
-        );
-        return res.status(404).json({ error: "Payment not found" });
-      }
-
-      console.log(
-        "Found payment:",
-        payment.orderId,
-        "Current status:",
-        payment.status
-      );
-
-      // Update payment status
-      let paymentUpdate = {
-        status: mapPlisioStatusToPrisma(status),
-        transactionStatus: status,
-        midtransResponse: JSON.stringify(callbackData),
-        updatedAt: new Date(),
-      };
-
-      if (status === "completed") {
-        paymentUpdate.paidAt = new Date();
-      }
-
-      const updatedPayment = await prisma.payment.update({
-        where: { id: payment.id },
-        data: paymentUpdate,
-        include: { user: true, roleModel: true },
-      });
-
-      console.log(
-        `Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
-      );
-
-      // If payment is successful, update user role/star and send notification
-      if (
-        mapPlisioStatusToPrisma(status) === "SUCCESS" &&
-        updatedPayment.userId
-      ) {
-        const notificationController = require("./notificationController");
-
-        // Handle star payment
-        if (updatedPayment.type === "star" && updatedPayment.star) {
-          console.log(
-            `Updating user ${updatedPayment.userId} star to ${updatedPayment.star}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { star: updatedPayment.star },
-          });
-
-          // Send star upgrade notification
-          const notificationResult =
-            await notificationController.createStarUpgradeNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.star,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio success callback star upgrade notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, star ${updatedPayment.star}`
-            );
-          } else {
-            console.log(
-              `Plisio success callback star notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "star",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              star: updatedPayment.star,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-        // Handle role payment
-        else if (
-          updatedPayment.role &&
-          (updatedPayment.type === "role" || !updatedPayment.type)
-        ) {
-          console.log(
-            `Updating user ${updatedPayment.userId} role to ${updatedPayment.role}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { role: updatedPayment.role },
-          });
-
-          // Send role purchase notification
-          const notificationResult =
-            await notificationController.createRolePurchaseNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.role,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio success callback notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, role ${updatedPayment.role}`
-            );
-          } else {
-            console.log(
-              `Plisio success callback notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "role",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              role: updatedPayment.role,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-      }
-
-      console.log(
-        `Success callback processed for order ${updatedPayment.orderId}, status: ${status}`
-      );
-
-      res.json({ success: true, message: "Success callback processed" });
-    } catch (error) {
-      console.error("Plisio success callback error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-
-  // Handle fail callback from Plisio
-  static async handleFailCallback(req, res) {
-    try {
-      const callbackData = req.body;
-      console.log("Plisio fail callback received:", callbackData);
-
-      const { txn_id, status, amount, currency, order_number } = callbackData;
-
-      // Verify the payment exists
-      const payment = await prisma.payment.findUnique({
-        where: { orderId: order_number },
-        include: { user: true, roleModel: true },
-      });
-
-      if (!payment) {
-        console.error("Payment not found for order:", order_number);
-        return res.status(404).json({ error: "Payment not found" });
-      }
-
-      // Update payment status
-      let paymentUpdate = {
-        status: mapPlisioStatusToPrisma(status),
-        transactionStatus: status,
-        midtransResponse: JSON.stringify(callbackData),
-        updatedAt: new Date(),
-      };
-
-      const updatedPayment = await prisma.payment.update({
-        where: { orderId: order_number },
-        data: paymentUpdate,
-        include: { user: true, roleModel: true },
-      });
-
-      console.log(
-        `Fail callback processed for order ${order_number}, status: ${status}`
-      );
-
-      res.json({ success: true, message: "Fail callback processed" });
-    } catch (error) {
-      console.error("Plisio fail callback error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-
-  // Handle notification from Plisio
-  static async handleNotification(req, res) {
-    try {
-      const notification = req.body;
-      console.log("Plisio notification received:", notification);
-
-      // Verify signature (if Plisio provides one)
-      // Note: Plisio might not provide signature verification like Midtrans
-      // You might want to implement additional security measures
-
-      const { txn_id, status, amount, currency, order_number } = notification;
-
-      // Update payment status - try both txn_id and order_number
-      let payment = await prisma.payment.findUnique({
-        where: { midtransTransactionId: txn_id },
-        include: { user: true, roleModel: true },
-      });
-
-      if (!payment && order_number) {
-        payment = await prisma.payment.findUnique({
-          where: { orderId: order_number },
-          include: { user: true, roleModel: true },
-        });
-      }
-
-      if (!payment) {
-        console.error(
-          "Payment not found for txn_id:",
-          txn_id,
-          "order_number:",
-          order_number
-        );
-        return res.status(404).json({ error: "Payment not found" });
-      }
-
-      console.log(
-        "Found payment:",
-        payment.orderId,
-        "Current status:",
-        payment.status
-      );
-
-      // Extract additional fields from Plisio notification
-      let paymentUpdate = {
-        status: mapPlisioStatusToPrisma(status),
-        transactionStatus: status,
-        midtransResponse: JSON.stringify(notification),
-        updatedAt: new Date(),
-      };
-
-      if (status === "completed") {
-        paymentUpdate.paidAt = new Date();
-      }
-
-      const updatedPayment = await prisma.payment.update({
-        where: { id: payment.id },
-        data: paymentUpdate,
-        include: { user: true, roleModel: true },
-      });
-
-      console.log(
-        `Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
-      );
-
-      // If payment is successful, update user role/star and send notification
-      if (
-        mapPlisioStatusToPrisma(status) === "SUCCESS" &&
-        updatedPayment.userId
-      ) {
-        const notificationController = require("./notificationController");
-
-        // Handle star payment
-        if (updatedPayment.type === "star" && updatedPayment.star) {
-          console.log(
-            `Updating user ${updatedPayment.userId} star to ${updatedPayment.star}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { star: updatedPayment.star },
-          });
-
-          // Send star upgrade notification
-          const notificationResult =
-            await notificationController.createStarUpgradeNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.star,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio notification star upgrade sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, star ${updatedPayment.star}`
-            );
-          } else {
-            console.log(
-              `Plisio notification star skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "star",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              star: updatedPayment.star,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-        // Handle role payment
-        else if (
-          updatedPayment.role &&
-          (updatedPayment.type === "role" || !updatedPayment.type)
-        ) {
-          console.log(
-            `Updating user ${updatedPayment.userId} role to ${updatedPayment.role}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { role: updatedPayment.role },
-          });
-
-          // Send role purchase notification
-          const notificationResult =
-            await notificationController.createRolePurchaseNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.role,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `Plisio notification sent for order ${updatedPayment.orderId}, user ${updatedPayment.userId}, role ${updatedPayment.role}`
-            );
-          } else {
-            console.log(
-              `Plisio notification skipped for order ${updatedPayment.orderId}: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "role",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              role: updatedPayment.role,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-            });
-          } catch (err) {
-            console.error("Failed to send email to admin:", err);
-          }
-        }
-      }
-
-      res.json({
-        success: true,
-        message: "Notification processed successfully",
-      });
-    } catch (error) {
-      console.error("Handle Plisio notification error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-
-  // Unified callback handler for all Plisio payment status updates
-  static async handleUnifiedCallback(req, res) {
-    try {
-      const callbackData = req.body;
-      console.log(
-        "🔔 Plisio unified callback received:",
-        JSON.stringify(callbackData, null, 2)
-      );
-
-      // Verify callback signature
-      const isValidSignature = verifyPlisioCallback(
-        callbackData,
-        PLISIO_API_KEY
-      );
-      if (!isValidSignature) {
-        console.error("❌ Invalid callback signature");
-        return res.status(422).json({ error: "Invalid signature" });
-      }
-
-      const {
-        txn_id,
-        status,
-        amount,
-        currency,
-        order_number,
-        order_name,
-        ipn_type,
-        merchant,
-        merchant_id,
-        confirmations,
-        source_currency,
-        source_amount,
-        source_rate,
-        comment,
-        verify_hash,
-        invoice_commission,
-        invoice_sum,
-        invoice_total_sum,
-      } = callbackData;
-
-      console.log(`📋 Callback Details:
-        - Txn ID: ${txn_id}
-        - Status: ${status}
-        - Order Number: ${order_number}
-        - Order Name: ${order_name}
-        - Amount: ${amount} ${currency}
-        - IPN Type: ${ipn_type}
-        - Confirmations: ${confirmations}
-      `);
-
-      // Find payment by txn_id or order_number
+      // Find payment by orderId
       let payment = await prisma.payment.findFirst({
         where: {
-          OR: [{ midtransTransactionId: txn_id }, { orderId: order_number }],
+          orderId: orderId,
+          paymentType: "plisio",
         },
         include: {
           user: true,
@@ -1011,178 +728,270 @@ class PlisioController {
       });
 
       if (!payment) {
+        console.error(`❌ Payment not found for orderId: ${orderId}`);
+        return res.status(404).json({
+          success: false,
+          error: "Payment not found",
+        });
+      }
+
+      // Verify that the payment belongs to the authenticated user
+      if (payment.userId !== userId) {
         console.error(
-          `❌ Payment not found for txn_id: ${txn_id}, order_number: ${order_number}`
+          `❌ Payment user mismatch: ${payment.userId} vs ${userId}`
         );
-        return res.status(404).json({ error: "Payment not found" });
+        return res.status(403).json({
+          success: false,
+          error: "Payment does not belong to this user",
+        });
+      }
+
+      // Verify email matches
+      if (payment.user?.email !== userEmail) {
+        console.error(
+          `❌ Email mismatch: ${payment.user?.email} vs ${userEmail}`
+        );
+        return res.status(403).json({
+          success: false,
+          error: "Email verification failed",
+        });
       }
 
       console.log(
-        `✅ Found payment: ${payment.orderId}, Current status: ${payment.status}`
+        `✅ Payment found: ${payment.orderId}, Current status: ${payment.status}`
       );
 
-      // Map Plisio status to our system
-      const mappedStatus = mapPlisioStatusToPrisma(status);
-      console.log(`🔄 Status mapping: ${status} -> ${mappedStatus}`);
-
-      // Update payment status
-      let paymentUpdate = {
-        status: mappedStatus,
-        transactionStatus: status,
-        midtransResponse: JSON.stringify(callbackData),
-        updatedAt: new Date(),
-      };
-
-      // Add paid timestamp if completed
-      if (status === "completed") {
-        paymentUpdate.paidAt = new Date();
+      // If payment is already successful, return the data immediately
+      if (payment.status === "SUCCESS") {
+        console.log(`✅ Payment already successful: ${payment.orderId}`);
+        return res.json({
+          success: true,
+          data: payment,
+          message: "Payment already verified and processed",
+          status: "SUCCESS",
+          shouldStopPolling: true,
+        });
       }
 
-      const updatedPayment = await prisma.payment.update({
-        where: { id: payment.id },
-        data: paymentUpdate,
-        include: { user: true, roleModel: true },
-      });
+      // Check Plisio API for latest status
+      if (payment.midtransTransactionId) {
+        try {
+          console.log(
+            `🔄 Checking Plisio status for transaction: ${payment.midtransTransactionId}`
+          );
 
-      console.log(
-        `✅ Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
-      );
+          const response = await axios.get(`${PLISIO_BASE_URL}/operations`, {
+            params: {
+              api_key: PLISIO_API_KEY,
+              txn_id: payment.midtransTransactionId,
+            },
+          });
 
-      // Handle successful payment completion
-      if (mappedStatus === "SUCCESS" && updatedPayment.userId) {
+          const result = response.data;
+
+          if (result.status === "success" && result.data.length > 0) {
+            const plisioData = result.data[0];
+            console.log(
+              `📊 Plisio status for ${payment.orderId}: ${plisioData.status}`
+            );
+
+            // Map Plisio status to our system
+            const mappedStatus = mapPlisioStatusToPrisma(plisioData.status);
+            console.log(
+              `🔄 Status mapping: ${plisioData.status} -> ${mappedStatus}`
+            );
+
+            // Update payment status
+            let paymentUpdate = {
+              status: mappedStatus,
+              transactionStatus: plisioData.status,
+              midtransResponse: JSON.stringify(plisioData),
+              updatedAt: new Date(),
+            };
+
+            if (plisioData.paid_at) {
+              paymentUpdate.paidAt = new Date(plisioData.paid_at * 1000);
+            }
+
+            // If payment is successful, update user role/star and send notifications
+            if (mappedStatus === "SUCCESS" && payment.userId) {
+              console.log(
+                `🎉 Processing successful payment for user: ${payment.userId}`
+              );
+
+              const notificationController = require("./notificationController");
+
+              // Handle star payment
+              if (payment.type === "star" && payment.star) {
+                console.log(
+                  `⭐ Updating user ${payment.userId} star to ${payment.star}`
+                );
+
+                await prisma.user.update({
+                  where: { userId: payment.userId },
+                  data: { star: payment.star },
+                });
+
+                // Send star upgrade notification
+                const notificationResult =
+                  await notificationController.createStarUpgradeNotification(
+                    payment.userId,
+                    payment.user?.username || "User",
+                    payment.star,
+                    payment.amount,
+                    payment.orderId
+                  );
+
+                if (notificationResult.success) {
+                  console.log(
+                    `✅ Star upgrade notification sent for order ${payment.orderId}`
+                  );
+                } else {
+                  console.log(
+                    `⚠️ Star notification skipped: ${notificationResult.message}`
+                  );
+                }
+
+                // Send email to admin
+                try {
+                  await sendAdminPaymentSuccessEmail({
+                    to: "afrizaahmad18@gmail.com",
+                    type: "star",
+                    username: payment.user?.username || "User",
+                    email: payment.user?.email || "No email",
+                    star: payment.star,
+                    amount: payment.amount,
+                    orderId: payment.orderId,
+                    paymentMethod: "Crypto (Plisio)",
+                    txnId: plisioData.txn_id,
+                    currency: plisioData.currency,
+                    amountReceived: plisioData.amount,
+                  });
+                } catch (err) {
+                  console.error("❌ Failed to send email to admin:", err);
+                }
+              }
+              // Handle role payment
+              else if (
+                payment.role &&
+                (payment.type === "role" || !payment.type)
+              ) {
+                console.log(
+                  `👑 Updating user ${payment.userId} role to ${payment.role}`
+                );
+
+                await prisma.user.update({
+                  where: { userId: payment.userId },
+                  data: { role: payment.role },
+                });
+
+                // Send role purchase notification
+                const notificationResult =
+                  await notificationController.createRolePurchaseNotification(
+                    payment.userId,
+                    payment.user?.username || "User",
+                    payment.role,
+                    payment.amount,
+                    payment.orderId
+                  );
+
+                if (notificationResult.success) {
+                  console.log(
+                    `✅ Role purchase notification sent for order ${payment.orderId}`
+                  );
+                } else {
+                  console.log(
+                    `⚠️ Role notification skipped: ${notificationResult.message}`
+                  );
+                }
+
+                // Send email to admin
+                try {
+                  await sendAdminPaymentSuccessEmail({
+                    to: "afrizaahmad18@gmail.com",
+                    type: "role",
+                    username: payment.user?.username || "User",
+                    email: payment.user?.email || "No email",
+                    role: payment.role,
+                    amount: payment.amount,
+                    orderId: payment.orderId,
+                    paymentMethod: "Crypto (Plisio)",
+                    txnId: plisioData.txn_id,
+                    currency: plisioData.currency,
+                    amountReceived: plisioData.amount,
+                  });
+                } catch (err) {
+                  console.error("❌ Failed to send email to admin:", err);
+                }
+              }
+            }
+
+            // Update payment in database
+            const updatedPayment = await prisma.payment.update({
+              where: { id: payment.id },
+              data: paymentUpdate,
+              include: { user: true, roleModel: true },
+            });
+
+            console.log(
+              `✅ Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
+            );
+
+            return res.json({
+              success: true,
+              data: updatedPayment,
+              message: `Payment status: ${mappedStatus}`,
+              status: mappedStatus,
+              shouldStopPolling:
+                mappedStatus === "SUCCESS" ||
+                mappedStatus === "FAILED" ||
+                mappedStatus === "CANCELLED" ||
+                mappedStatus === "EXPIRED",
+            });
+          } else {
+            console.log(
+              `⚠️ Plisio API returned no data for transaction: ${payment.midtransTransactionId}`
+            );
+          }
+        } catch (error) {
+          console.error("❌ Error fetching from Plisio API:", error);
+          console.error(
+            "❌ Error details:",
+            error.response?.data || error.message
+          );
+        }
+      } else {
         console.log(
-          `🎉 Processing successful payment for user: ${updatedPayment.userId}`
+          `⚠️ No midtransTransactionId found for payment: ${payment.orderId}`
         );
-
-        const notificationController = require("./notificationController");
-
-        // Handle star payment
-        if (updatedPayment.type === "star" && updatedPayment.star) {
-          console.log(
-            `⭐ Updating user ${updatedPayment.userId} star to ${updatedPayment.star}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { star: updatedPayment.star },
-          });
-
-          // Send star upgrade notification
-          const notificationResult =
-            await notificationController.createStarUpgradeNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.star,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `✅ Star upgrade notification sent for order ${updatedPayment.orderId}`
-            );
-          } else {
-            console.log(
-              `⚠️ Star notification skipped: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "star",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              star: updatedPayment.star,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-              txnId: txn_id,
-              currency: currency,
-              amountReceived: amount,
-            });
-          } catch (err) {
-            console.error("❌ Failed to send email to admin:", err);
-          }
-        }
-        // Handle role payment
-        else if (
-          updatedPayment.role &&
-          (updatedPayment.type === "role" || !updatedPayment.type)
-        ) {
-          console.log(
-            `👑 Updating user ${updatedPayment.userId} role to ${updatedPayment.role}`
-          );
-
-          await prisma.user.update({
-            where: { userId: updatedPayment.userId },
-            data: { role: updatedPayment.role },
-          });
-
-          // Send role purchase notification
-          const notificationResult =
-            await notificationController.createRolePurchaseNotification(
-              updatedPayment.userId,
-              updatedPayment.user?.username || "User",
-              updatedPayment.role,
-              updatedPayment.amount,
-              updatedPayment.orderId
-            );
-
-          if (notificationResult.success) {
-            console.log(
-              `✅ Role purchase notification sent for order ${updatedPayment.orderId}`
-            );
-          } else {
-            console.log(
-              `⚠️ Role notification skipped: ${notificationResult.message}`
-            );
-          }
-
-          // Send email to admin
-          try {
-            await sendAdminPaymentSuccessEmail({
-              to: "afrizaahmad18@gmail.com",
-              type: "role",
-              username: updatedPayment.user?.username || "User",
-              email: updatedPayment.user?.email || "No email",
-              role: updatedPayment.role,
-              amount: updatedPayment.amount,
-              orderId: updatedPayment.orderId,
-              paymentMethod: "Crypto (Plisio)",
-              txnId: txn_id,
-              currency: currency,
-              amountReceived: amount,
-            });
-          } catch (err) {
-            console.error("❌ Failed to send email to admin:", err);
-          }
-        }
       }
 
-      // Log final status
-      console.log(
-        `🏁 Callback processing completed for order ${updatedPayment.orderId}`
-      );
-      console.log(
-        `📊 Final status: ${updatedPayment.status}, Plisio status: ${status}`
-      );
-
-      res.json({
+      // Return current payment status if no update was made
+      console.log(`📋 Returning current payment status: ${payment.status}`);
+      return res.json({
         success: true,
-        message: "Callback processed successfully",
-        orderId: updatedPayment.orderId,
-        status: updatedPayment.status,
-        plisioStatus: status,
+        data: payment,
+        message: `Current payment status: ${payment.status}`,
+        status: payment.status,
+        shouldStopPolling: false, // Continue polling for pending status
       });
     } catch (error) {
-      console.error("❌ Plisio unified callback error:", error);
+      console.error("❌ Error in payment status check:", error);
       res.status(500).json({
+        success: false,
         error: "Internal server error",
-        message: error.message,
+        details: error.message,
       });
     }
+  }
+
+  // Test endpoint to verify your callback URL is working
+  static async testCallback(req, res) {
+    res.json({
+      status: "success",
+      message: "Plisio callback endpoint is working",
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // Get all payments for user
@@ -1304,8 +1113,23 @@ class PlisioController {
       }
 
       // Price: 1.000 x 10^(targetStar-1) in IDR
-      const priceIDR = 1000 * Math.pow(10, targetStar - 1);
+      const priceIDR = 10000 * Math.pow(10, targetStar - 1);
       const currency = req.body.currency || "BTC"; // Default to BTC instead of USD
+      // Get a valid role name for the payment record
+      let userRole = req.body.userRole || user.role || "member";
+
+      // Check if the role exists in the Role table, if not use the first available role
+      const existingRole = await prisma.role.findFirst({
+        where: { name: userRole },
+      });
+
+      if (!existingRole) {
+        // If the role doesn't exist, get the first available role
+        const firstRole = await prisma.role.findFirst({
+          orderBy: { price: "asc" },
+        });
+        userRole = firstRole ? firstRole.name : "member";
+      }
 
       // Convert IDR to USD (approximate rate)
       const usdRate = 0.000065; // 1 IDR = 0.000065 USD (approximate)
@@ -1341,14 +1165,18 @@ class PlisioController {
         source_currency: "USD",
         source_amount: amountUSD,
         currency: currency,
-        callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        success_callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        fail_callback_url: `${backendUrl}/api/plisio/webhook?json=true`,
-        success_invoice_url: `${frontendUrl}/payment-success?orderId=${orderId}`,
+        // Callback URLs with json=true parameter for JSON responses
+        callback_url: `${backendUrl}/api/plisio/callback?json=true`,
+        success_callback_url: `${backendUrl}/api/plisio/success?json=true`,
+        fail_callback_url: `${backendUrl}/api/plisio/fail?json=true`,
+        // Frontend redirect URLs
+        success_invoice_url: `${frontendUrl}/crypto-success/${orderId}`,
         fail_invoice_url: `${frontendUrl}/buy-role`,
         email: user.email,
         description: `Upgrade to Star ${targetStar} for ${user.username}`,
         expire_min: 60, // Invoice expires in 60 minutes
+        // Additional optional parameters
+        language: "en_US", // English language
       };
 
       console.log(
@@ -1389,7 +1217,7 @@ class PlisioController {
         data: {
           orderId,
           userId,
-          role: user.role || "",
+          role: userRole, // Use the role from request body
           amount: priceIDR,
           adminFee: 0,
           totalAmount: priceIDR,
@@ -1545,6 +1373,503 @@ class PlisioController {
     } catch (error) {
       console.error("Get Plisio star payment status error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
+  // New crypto callback handler for frontend verification
+  static async handleCryptoCallback(req, res) {
+    try {
+      const { orderId, userEmail } = req.body;
+      const userId = req.user.userId;
+
+      console.log(
+        `🔍 Crypto callback verification for orderId: ${orderId}, userEmail: ${userEmail}`
+      );
+
+      if (!orderId || !userEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing orderId or userEmail",
+        });
+      }
+
+      // Find payment by orderId
+      let payment = await prisma.payment.findFirst({
+        where: {
+          orderId: orderId,
+          paymentType: "plisio", // Only Plisio payments
+        },
+        include: {
+          user: true,
+          roleModel: true,
+        },
+      });
+
+      if (!payment) {
+        console.error(`❌ Payment not found for orderId: ${orderId}`);
+        return res.status(404).json({
+          success: false,
+          error: "Payment not found",
+        });
+      }
+
+      // Verify that the payment belongs to the authenticated user
+      if (payment.userId !== userId) {
+        console.error(
+          `❌ Payment user mismatch: ${payment.userId} vs ${userId}`
+        );
+        return res.status(403).json({
+          success: false,
+          error: "Payment does not belong to this user",
+        });
+      }
+
+      // Verify email matches (additional security check)
+      if (payment.user?.email !== userEmail) {
+        console.error(
+          `❌ Email mismatch: ${payment.user?.email} vs ${userEmail}`
+        );
+        return res.status(403).json({
+          success: false,
+          error: "Email verification failed",
+        });
+      }
+
+      console.log(
+        `✅ Payment found: ${payment.orderId}, Current status: ${payment.status}`
+      );
+
+      // If payment is already successful, return the data
+      if (payment.status === "SUCCESS") {
+        console.log(`✅ Payment already successful: ${payment.orderId}`);
+        return res.json({
+          success: true,
+          data: payment,
+          message: "Payment already verified",
+        });
+      }
+
+      // Check if we have a transaction ID to verify with Plisio
+      if (payment.midtransTransactionId) {
+        try {
+          // Get latest status from Plisio
+          const response = await axios.get(`${PLISIO_BASE_URL}/operations`, {
+            params: {
+              api_key: PLISIO_API_KEY,
+              txn_id: payment.midtransTransactionId,
+            },
+          });
+
+          const result = response.data;
+
+          if (result.status === "success" && result.data.length > 0) {
+            const plisioData = result.data[0];
+            console.log(
+              `📊 Plisio status for ${payment.orderId}: ${plisioData.status}`
+            );
+
+            // Map Plisio status to our system
+            const mappedStatus = mapPlisioStatusToPrisma(plisioData.status);
+
+            // Update payment status
+            let paymentUpdate = {
+              status: mappedStatus,
+              transactionStatus: plisioData.status,
+              midtransResponse: JSON.stringify(plisioData),
+              updatedAt: new Date(),
+            };
+
+            if (plisioData.paid_at) {
+              paymentUpdate.paidAt = new Date(plisioData.paid_at * 1000);
+            }
+
+            // If payment is successful, update user role/star and send notifications
+            if (mappedStatus === "SUCCESS" && payment.userId) {
+              console.log(
+                `🎉 Processing successful payment for user: ${payment.userId}`
+              );
+
+              const notificationController = require("./notificationController");
+
+              // Handle star payment
+              if (payment.type === "star" && payment.star) {
+                console.log(
+                  `⭐ Updating user ${payment.userId} star to ${payment.star}`
+                );
+
+                await prisma.user.update({
+                  where: { userId: payment.userId },
+                  data: { star: payment.star },
+                });
+
+                // Send star upgrade notification
+                const notificationResult =
+                  await notificationController.createStarUpgradeNotification(
+                    payment.userId,
+                    payment.user?.username || "User",
+                    payment.star,
+                    payment.amount,
+                    payment.orderId
+                  );
+
+                if (notificationResult.success) {
+                  console.log(
+                    `✅ Star upgrade notification sent for order ${payment.orderId}`
+                  );
+                } else {
+                  console.log(
+                    `⚠️ Star notification skipped: ${notificationResult.message}`
+                  );
+                }
+
+                // Send email to admin
+                try {
+                  await sendAdminPaymentSuccessEmail({
+                    to: "afrizaahmad18@gmail.com",
+                    type: "star",
+                    username: payment.user?.username || "User",
+                    email: payment.user?.email || "No email",
+                    star: payment.star,
+                    amount: payment.amount,
+                    orderId: payment.orderId,
+                    paymentMethod: "Crypto (Plisio)",
+                    txnId: plisioData.txn_id,
+                    currency: plisioData.currency,
+                    amountReceived: plisioData.amount,
+                  });
+                } catch (err) {
+                  console.error("❌ Failed to send email to admin:", err);
+                }
+              }
+              // Handle role payment
+              else if (
+                payment.role &&
+                (payment.type === "role" || !payment.type)
+              ) {
+                console.log(
+                  `👑 Updating user ${payment.userId} role to ${payment.role}`
+                );
+
+                await prisma.user.update({
+                  where: { userId: payment.userId },
+                  data: { role: payment.role },
+                });
+
+                // Send role purchase notification
+                const notificationResult =
+                  await notificationController.createRolePurchaseNotification(
+                    payment.userId,
+                    payment.user?.username || "User",
+                    payment.role,
+                    payment.amount,
+                    payment.orderId
+                  );
+
+                if (notificationResult.success) {
+                  console.log(
+                    `✅ Role purchase notification sent for order ${payment.orderId}`
+                  );
+                } else {
+                  console.log(
+                    `⚠️ Role notification skipped: ${notificationResult.message}`
+                  );
+                }
+
+                // Send email to admin
+                try {
+                  await sendAdminPaymentSuccessEmail({
+                    to: "afrizaahmad18@gmail.com",
+                    type: "role",
+                    username: payment.user?.username || "User",
+                    email: payment.user?.email || "No email",
+                    role: payment.role,
+                    amount: payment.amount,
+                    orderId: payment.orderId,
+                    paymentMethod: "Crypto (Plisio)",
+                    txnId: plisioData.txn_id,
+                    currency: plisioData.currency,
+                    amountReceived: plisioData.amount,
+                  });
+                } catch (err) {
+                  console.error("❌ Failed to send email to admin:", err);
+                }
+              }
+            }
+
+            // Update payment in database
+            const updatedPayment = await prisma.payment.update({
+              where: { id: payment.id },
+              data: paymentUpdate,
+              include: { user: true, roleModel: true },
+            });
+
+            console.log(
+              `✅ Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
+            );
+
+            return res.json({
+              success: true,
+              data: updatedPayment,
+              message: `Payment status: ${mappedStatus}`,
+            });
+          } else {
+            console.log(
+              `⚠️ Plisio API returned no data for transaction: ${payment.midtransTransactionId}`
+            );
+          }
+        } catch (error) {
+          console.error("❌ Error fetching from Plisio API:", error);
+          // Continue with current payment status if Plisio API fails
+        }
+      }
+
+      // If no transaction ID or Plisio API failed, return current payment status
+      console.log(`📋 Returning current payment status: ${payment.status}`);
+      return res.json({
+        success: true,
+        data: payment,
+        message: `Current payment status: ${payment.status}`,
+      });
+    } catch (error) {
+      console.error("❌ Error in crypto callback:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        details: error.message,
+      });
+    }
+  }
+
+  // Auto-success processor for crypto-success page redirect
+  static async handleAutoSuccess(req, res) {
+    try {
+      const { orderId, userEmail } = req.body;
+      const userId = req.user.userId;
+
+      console.log(
+        `🎉 Auto-success processing for orderId: ${orderId}, userEmail: ${userEmail}`
+      );
+
+      if (!orderId || !userEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing orderId or userEmail",
+        });
+      }
+
+      // Find payment by orderId
+      let payment = await prisma.payment.findFirst({
+        where: {
+          orderId: orderId,
+          paymentType: "plisio",
+        },
+        include: {
+          user: true,
+          roleModel: true,
+        },
+      });
+
+      if (!payment) {
+        console.error(`❌ Payment not found for orderId: ${orderId}`);
+        return res.status(404).json({
+          success: false,
+          error: "Payment not found",
+        });
+      }
+
+      // Verify that the payment belongs to the authenticated user
+      if (payment.userId !== userId) {
+        console.error(
+          `❌ Payment user mismatch: ${payment.userId} vs ${userId}`
+        );
+        return res.status(403).json({
+          success: false,
+          error: "Payment does not belong to this user",
+        });
+      }
+
+      // Verify email matches
+      if (payment.user?.email !== userEmail) {
+        console.error(
+          `❌ Email mismatch: ${payment.user?.email} vs ${userEmail}`
+        );
+        return res.status(403).json({
+          success: false,
+          error: "Email verification failed",
+        });
+      }
+
+      console.log(
+        `✅ Payment found: ${payment.orderId}, Current status: ${payment.status}`
+      );
+
+      // If payment is already successful, return the data immediately
+      if (payment.status === "SUCCESS") {
+        console.log(`✅ Payment already successful: ${payment.orderId}`);
+        return res.json({
+          success: true,
+          data: payment,
+          message: "Payment already verified and processed",
+          status: "SUCCESS",
+          shouldStopPolling: true,
+        });
+      }
+
+      // Automatically set payment to SUCCESS and update user role/star
+      console.log(`🎉 Setting payment ${payment.orderId} to SUCCESS`);
+
+      // Update payment status to SUCCESS
+      let paymentUpdate = {
+        status: "SUCCESS",
+        transactionStatus: "completed",
+        updatedAt: new Date(),
+        paidAt: new Date(),
+      };
+
+      // If we have Plisio transaction data, include it
+      if (payment.midtransTransactionId) {
+        paymentUpdate.midtransResponse = JSON.stringify({
+          txn_id: payment.midtransTransactionId,
+          status: "completed",
+          paid_at: Math.floor(Date.now() / 1000),
+        });
+      }
+
+      // Update user role/star immediately
+      if (payment.userId) {
+        console.log(
+          `🎉 Processing successful payment for user: ${payment.userId}`
+        );
+
+        const notificationController = require("./notificationController");
+
+        // Handle star payment
+        if (payment.type === "star" && payment.star) {
+          console.log(
+            `⭐ Updating user ${payment.userId} star to ${payment.star}`
+          );
+
+          await prisma.user.update({
+            where: { userId: payment.userId },
+            data: { star: payment.star },
+          });
+
+          // Send star upgrade notification
+          const notificationResult =
+            await notificationController.createStarUpgradeNotification(
+              payment.userId,
+              payment.user?.username || "User",
+              payment.star,
+              payment.amount,
+              payment.orderId
+            );
+
+          if (notificationResult.success) {
+            console.log(
+              `✅ Star upgrade notification sent for order ${payment.orderId}`
+            );
+          } else {
+            console.log(
+              `⚠️ Star notification skipped: ${notificationResult.message}`
+            );
+          }
+
+          // Send email to admin
+          try {
+            await sendAdminPaymentSuccessEmail({
+              to: "afrizaahmad18@gmail.com",
+              type: "star",
+              username: payment.user?.username || "User",
+              email: payment.user?.email || "No email",
+              star: payment.star,
+              amount: payment.amount,
+              orderId: payment.orderId,
+              paymentMethod: "Crypto (Plisio)",
+              txnId: payment.midtransTransactionId || "Auto-success",
+              currency: "AUTO",
+              amountReceived: payment.amount,
+            });
+          } catch (err) {
+            console.error("❌ Failed to send email to admin:", err);
+          }
+        }
+        // Handle role payment
+        else if (payment.role && (payment.type === "role" || !payment.type)) {
+          console.log(
+            `👑 Updating user ${payment.userId} role to ${payment.role}`
+          );
+
+          await prisma.user.update({
+            where: { userId: payment.userId },
+            data: { role: payment.role },
+          });
+
+          // Send role purchase notification
+          const notificationResult =
+            await notificationController.createRolePurchaseNotification(
+              payment.userId,
+              payment.user?.username || "User",
+              payment.role,
+              payment.amount,
+              payment.orderId
+            );
+
+          if (notificationResult.success) {
+            console.log(
+              `✅ Role purchase notification sent for order ${payment.orderId}`
+            );
+          } else {
+            console.log(
+              `⚠️ Role notification skipped: ${notificationResult.message}`
+            );
+          }
+
+          // Send email to admin
+          try {
+            await sendAdminPaymentSuccessEmail({
+              to: "afrizaahmad18@gmail.com",
+              type: "role",
+              username: payment.user?.username || "User",
+              email: payment.user?.email || "No email",
+              role: payment.role,
+              amount: payment.amount,
+              orderId: payment.orderId,
+              paymentMethod: "Crypto (Plisio)",
+              txnId: payment.midtransTransactionId || "Auto-success",
+              currency: "AUTO",
+              amountReceived: payment.amount,
+            });
+          } catch (err) {
+            console.error("❌ Failed to send email to admin:", err);
+          }
+        }
+      }
+
+      // Update payment in database
+      const updatedPayment = await prisma.payment.update({
+        where: { id: payment.id },
+        data: paymentUpdate,
+        include: { user: true, roleModel: true },
+      });
+
+      console.log(
+        `✅ Payment ${updatedPayment.orderId} status updated to: ${updatedPayment.status}`
+      );
+
+      return res.json({
+        success: true,
+        data: updatedPayment,
+        message: "Payment automatically set to SUCCESS",
+        status: "SUCCESS",
+        shouldStopPolling: true,
+      });
+    } catch (error) {
+      console.error("❌ Error in auto-success:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        details: error.message,
+      });
     }
   }
 }

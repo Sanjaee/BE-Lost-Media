@@ -7,6 +7,9 @@ const authMiddleware = require("../middleware/authMiddleware");
 router.get("/roles", PlisioController.getAllRoles);
 router.get("/currencies", PlisioController.getCurrencies);
 
+// Test endpoint to verify callback URL is working
+router.get("/test", PlisioController.testCallback);
+
 // Protected routes (authentication required)
 router.use(authMiddleware);
 
@@ -18,16 +21,13 @@ router.get("/pending-payment", PlisioController.getPendingPaymentByUser);
 router.post("/cancel-payment/:orderId", PlisioController.cancelPayment);
 
 // Star payment routes
-router.post("/create-star-payment", PlisioController.createStarPayment);
+router.post("/star/create", PlisioController.createStarPayment);
 router.get("/star/status/:orderId", PlisioController.getStarPaymentStatus);
 
-// Webhook routes (no authentication required for callbacks)
+// Unified callback routes
 router.post("/callback", PlisioController.handleCallback);
-router.post("/notify", PlisioController.handleNotification);
-router.post("/success", PlisioController.handleSuccessCallback);
-router.post("/fail", PlisioController.handleFailCallback);
-
-// Unified callback route for all Plisio payment status updates
-router.post("/webhook", PlisioController.handleUnifiedCallback);
+router.post("/check-status", PlisioController.checkPaymentStatus);
+router.post("/crypto-callback", PlisioController.handleCryptoCallback);
+router.post("/auto-success", PlisioController.handleAutoSuccess);
 
 module.exports = router;
