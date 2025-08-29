@@ -27,4 +27,7 @@ router.post("/notify", PlisioController.handleNotification);
 router.post("/success", PlisioController.handleSuccessCallback);
 router.post("/fail", PlisioController.handleFailCallback);
 
+// Unified callback route for all Plisio payment status updates
+router.post("/webhook", PlisioController.handleUnifiedCallback);
+
 module.exports = router;
