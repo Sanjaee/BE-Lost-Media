@@ -1987,7 +1987,7 @@ const postController = {
             userId: post.author.userId,
             actorId: req.user.userId,
             type: "post_force_deleted",
-            content: `Post "${post.title}" telah dihapus paksa oleh ${requesterRole} karena tidak memenuhi standar.`,
+            content: `Post "${post.title}" has been force deleted by ${requesterRole} because it doesn't meet the standards.`,
             actionUrl: `/profile/${post.author.userId}`,
           },
         });
@@ -2401,7 +2401,7 @@ const postController = {
             userId: post.author.userId,
             actorId: req.user.userId,
             type: "post_deleted",
-            content: `Post "${post.title}" telah dihapus oleh ${requesterRole}.`,
+            content: `Post "${post.title}" has been deleted by ${requesterRole}.`,
             actionUrl: `/profile/${post.author.userId}`,
           },
         });
@@ -2488,7 +2488,7 @@ const postController = {
               userId: post.author.userId,
               actorId: req.user.userId,
               type: "post_approved",
-              content: `Post "${post.title}" telah disetujui dan dipublikasikan oleh ${requesterRole}.`,
+              content: `Post "${post.title}" has been approved and published by ${requesterRole}.`,
               actionUrl: `/post/${post.postId}`,
             },
           });
@@ -2615,7 +2615,7 @@ const postController = {
               userId: post.author.userId,
               actorId: req.user.userId,
               type: "post_deleted",
-              content: `Post "${post.title}" telah dihapus oleh ${requesterRole}.`,
+              content: `Post "${post.title}" has been deleted by ${requesterRole}.`,
               actionUrl: `/profile/${post.author.userId}`,
             },
           });
@@ -2741,7 +2741,7 @@ const postController = {
               userId: post.author.userId,
               actorId: req.user.userId,
               type: "post_force_deleted",
-              content: `Post "${post.title}" telah dihapus paksa oleh ${requesterRole} karena tidak memenuhi standar.`,
+              content: `Post "${post.title}" has been force deleted by ${requesterRole} because it doesn't meet the standards.`,
               actionUrl: `/profile/${post.author.userId}`,
             },
           });
