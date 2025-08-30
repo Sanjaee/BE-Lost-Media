@@ -357,16 +357,16 @@ const authController = {
   // Update user role
   updateRole: async (req, res) => {
     try {
-      // Allow if requester is owner (from JWT or from body.currentRole)
-      const roleFromJwt = req.user && req.user.role;
-      const roleFromBody = req.body.currentRole;
-      if (roleFromJwt !== "owner" && roleFromBody !== "owner") {
+      // Only owner can update roles
+      const requesterRole =
+        req.headers["x-user-role"] || (req.user && req.user.role);
+      if (requesterRole !== "owner") {
         return res
           .status(403)
           .json({ error: "Forbidden: Only owner can update roles" });
       }
       const { userId, role } = req.body;
-      const allowedRoles = ["owner", "admin"];
+      const allowedRoles = ["admin", "mod", "god", "vip", "member"];
       if (!userId || !role) {
         return res.status(400).json({ error: "UserId and role are required" });
       }
@@ -426,7 +426,7 @@ const authController = {
               userId: userId,
               actorId: promoterUserId,
               type: "role_promoted",
-              content: `Selamat! Role Anda telah dinaikkan menjadi ${role} oleh ${promoterRole}.`,
+              content: `Congratulations! Your role has been promoted to ${role} by ${promoterRole}.`,
               actionUrl: `/profile/${userId}`,
             },
           });
@@ -501,11 +501,9 @@ const authController = {
       const requesterRole =
         req.headers["x-user-role"] || (req.user && req.user.role);
       if (!allowedRoles.includes(requesterRole)) {
-        return res
-          .status(403)
-          .json({
-            error: "Forbidden: Only owner and admin can access this endpoint",
-          });
+        return res.status(403).json({
+          error: "Forbidden: Only owner and admin can access this endpoint",
+        });
       }
       const { userId } = req.params;
       if (!userId) {
@@ -751,8 +749,8 @@ const authController = {
             userId: userId,
             actorId: req.user.userId,
             type: "account_banned",
-            content: `Akun Anda telah dibanned oleh ${requesterRole}${
-              reason ? ` karena: ${reason}` : ""
+            content: `Your account has been banned by ${requesterRole}${
+              reason ? ` because: ${reason}` : ""
             }.`,
             actionUrl: `/profile/${userId}`,
           },
