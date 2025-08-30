@@ -189,7 +189,7 @@ module.exports = {
           userId: authorUserId,
           actorId: approverUserId,
           type: "post_approved",
-          content: `Post "${postTitle}" telah disetujui dan dipublikasikan oleh ${approverRole}.`,
+          content: `Post "${postTitle}" has been approved and published by ${approverRole}.`,
           actionUrl: `/share/${postId}`,
         },
         include: {
@@ -224,7 +224,7 @@ module.exports = {
           userId: authorUserId,
           actorId: deleterUserId,
           type: "post_deleted",
-          content: `Post "${postTitle}" telah dihapus oleh ${deleterRole}.`,
+          content: `Post "${postTitle}" has been deleted by ${deleterRole}.`,
           actionUrl: `/profile/${authorUserId}`,
         },
         include: {
@@ -259,7 +259,7 @@ module.exports = {
           userId: authorUserId,
           actorId: deleterUserId,
           type: "post_force_deleted",
-          content: `Post "${postTitle}" telah dihapus paksa oleh ${deleterRole} karena tidak memenuhi standar.`,
+          content: `Post "${postTitle}" has been force deleted by ${deleterRole} because it doesn't meet standards.`,
           actionUrl: `/profile/${authorUserId}`,
         },
         include: {
@@ -294,7 +294,7 @@ module.exports = {
           userId: userId,
           actorId: promoterUserId,
           type: "role_promoted",
-          content: `Selamat! Role Anda telah dinaikkan menjadi ${newRole} oleh ${promoterRole}.`,
+          content: `Congratulations! Your role has been promoted to ${newRole} by ${promoterRole}.`,
           actionUrl: `/profile/${userId}`,
         },
         include: {
@@ -329,8 +329,8 @@ module.exports = {
           userId: userId,
           actorId: bannerUserId,
           type: "account_banned",
-          content: `Akun Anda telah dibanned oleh ${bannerRole}${
-            reason ? ` karena: ${reason}` : ""
+          content: `Your account has been banned by ${bannerRole}${
+            reason ? ` because: ${reason}` : ""
           }.`,
           actionUrl: `/profile/${userId}`,
         },
@@ -392,7 +392,7 @@ module.exports = {
           userId: postOwnerId,
           actorId: commenterId,
           type: "comment",
-          content: `@${commenterUsername} mengomentari postingan Anda: "${postTitle}"`,
+          content: `@${commenterUsername} commented on your post: "${postTitle}"`,
           actionUrl: `/share/${postId}`,
         },
         include: {
@@ -428,7 +428,7 @@ module.exports = {
           userId: parentCommentAuthorId,
           actorId: replierId,
           type: "reply",
-          content: `@${replierUsername} membalas komentar Anda di postingan: "${postTitle}"`,
+          content: `@${replierUsername} replied to your comment on post: "${postTitle}"`,
           actionUrl: `/share/${postId}`,
         },
         include: {
@@ -485,7 +485,7 @@ module.exports = {
           userId: userId,
           type: "role_purchased",
           content: {
-            contains: `Pembelian role ${roleName} berhasil`,
+            contains: `role purchase successful`,
           },
           createdAt: {
             gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
@@ -505,9 +505,9 @@ module.exports = {
           userId: userId,
           actorId: userId, // Self notification
           type: "role_purchased",
-          content: `Selamat! Pembelian role ${roleName} berhasil. Anda telah membayar Rp ${amount.toLocaleString(
-            "id-ID"
-          )}.${orderId ? ` (Order: ${orderId})` : ""}`,
+          content: `Congratulations! ${roleName} role purchase successful. You have paid USD ${(
+            amount * 0.000065
+          ).toFixed(2)}.${orderId ? ` (Order: ${orderId})` : ""}`,
           actionUrl: `/profile/${userId}`,
         },
         include: {
@@ -546,7 +546,7 @@ module.exports = {
           userId: userId,
           type: "star_upgraded",
           content: {
-            contains: `Upgrade star ke level ${newStar} berhasil`,
+            contains: `Star upgrade to level ${newStar} successful`,
           },
           createdAt: {
             gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
@@ -566,9 +566,9 @@ module.exports = {
           userId: userId,
           actorId: userId, // Self notification
           type: "star_upgraded",
-          content: `Selamat! Upgrade star ke level ${newStar} berhasil. Anda telah membayar Rp ${amount.toLocaleString(
-            "id-ID"
-          )}.${orderId ? ` (Order: ${orderId})` : ""}`,
+          content: `Congratulations! Star upgrade to level ${newStar} successful. You have paid USD ${(
+            amount * 0.000065
+          ).toFixed(2)}.${orderId ? ` (Order: ${orderId})` : ""}`,
           actionUrl: `/profile/${userId}`,
         },
         include: {
