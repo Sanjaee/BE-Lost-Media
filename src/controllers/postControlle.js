@@ -1243,6 +1243,10 @@ const postController = {
             scheduledAt:
               isScheduled && scheduledAt ? new Date(scheduledAt) : null,
             isScheduled: isScheduled || false,
+            // Set createdAt to scheduled date if scheduling is active, otherwise use current date
+            createdAt:
+              isScheduled && scheduledAt ? new Date(scheduledAt) : new Date(),
+            updatedAt: new Date(),
           },
         });
 
@@ -1357,6 +1361,12 @@ const postController = {
             ...(isScheduled !== undefined && {
               isPublished: isScheduled ? false : existingPost.isPublished,
             }),
+            // Update createdAt to scheduled date if scheduling is being enabled, otherwise keep existing createdAt
+            ...(isScheduled &&
+              scheduledAt && {
+                createdAt: new Date(scheduledAt),
+              }),
+            updatedAt: new Date(),
           },
         });
 
