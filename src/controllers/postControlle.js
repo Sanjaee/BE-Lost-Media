@@ -384,6 +384,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           // Limited sections for performance
@@ -554,6 +556,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           sections: {
@@ -976,6 +980,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           ...(currentUserId && {
@@ -1662,6 +1668,8 @@ const postController = {
             select: {
               userId: true,
               username: true,
+              createdAt: true,
+              star: true,
             },
           },
         },
@@ -1740,6 +1748,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           sections: {
@@ -1857,6 +1867,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           sections: {
@@ -2107,6 +2119,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           // Limited sections for performance
@@ -2266,6 +2280,8 @@ const postController = {
               username: true,
               profilePic: true,
               role: true,
+              createdAt: true,
+              star: true,
             },
           },
           sections: {
